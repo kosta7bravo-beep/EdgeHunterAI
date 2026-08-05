@@ -1,8 +1,17 @@
 from telegram_bot import send_message
 
+already_sent = False
+
 async def check_football():
+    global already_sent
+
+    if already_sent:
+        return
+
+    already_sent = True
+
     await send_message(
-        "⚽ <b>Тест футбольного модуля</b>\n\n"
-        "✅ Бот проверил футбольные матчи.\n"
-        "Пока это тестовое сообщение."
+        "⚽ EdgeHunterAI\n\n"
+        "✅ Футбольный модуль работает.\n"
+        "Ожидаю реальные данные для анализа."
     )
