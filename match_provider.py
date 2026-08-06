@@ -1,30 +1,41 @@
+import requests
+from config import API_KEY
+
+BASE_URL = "https://v3.football.api-sports.io/fixtures"
+
 def get_matches():
-    return [
-        {
-            "league": "Premier League",
-            "home": "Arsenal",
-            "away": "Chelsea",
-            "odd": 1.91,
-            "home_form": 4,
-            "away_form": 3,
-            "goals_avg": 2.9
-        },
-        {
-            "league": "La Liga",
-            "home": "Real Madrid",
-            "away": "Sevilla",
-            "odd": 1.83,
-            "home_form": 5,
-            "away_form": 2,
-            "goals_avg": 3.1
-        },
-        {
-            "league": "Serie A",
-            "home": "Inter",
-            "away": "Roma",
-            "odd": 2.15,
-            "home_form": 4,
-            "away_form": 4,
-            "goals_avg": 2.7
-        }
-    ]
+    headers = {
+        "x-apisports-key": API_KEY
+    }
+
+    params = {
+        "next": 20
+    }
+
+    try:
+        response = requests.get(BASE_URL, headers=headers, params=params, timeout=20)
+
+        if response.status_code != 200:
+            print("Ошибка API:", response.status_code)
+            return []
+
+        data = response.json()
+
+        matches = []
+
+        for item in data.get("response", []):
+            matches.append({
+                "league": item["league"]["name"],
+                "home": item["teams"]["home"]["name"],
+                "away": item["teams"]["away"]["name"],
+                "odd": 2.0,
+                "home_form": 3,
+                "away_form": 3,
+                "goals_avg": 2.5
+            })
+
+        return matches
+
+    except Exception as e:
+        print("Ошибка получения матчей:", e)
+        return []
