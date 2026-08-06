@@ -10,7 +10,7 @@ FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")
 
 # ===== Настройки =====
-CHECK_INTERVAL = 300      # проверка каждые 5 минут
+CHECK_INTERVAL = 900     # проверка каждые 5 минут
 MIN_VALUE = 5             # минимальный Value (%)
 MIN_ODDS = 1.50
 MAX_ODDS = 5.00
