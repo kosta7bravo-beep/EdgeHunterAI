@@ -9,9 +9,8 @@ def get_matches():
     }
 
     params = {
-        "next": 20
+    "live": "all"
     }
-
     try:
         response = requests.get(BASE_URL, headers=headers, params=params, timeout=20)
 
