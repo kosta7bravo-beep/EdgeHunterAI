@@ -1,11 +1,11 @@
 import requests
-from config import API_KEY
+from config import FOOTBALL_API_KEY
 
 BASE_URL = "https://v3.football.api-sports.io/fixtures"
 
 def get_matches():
     headers = {
-        "x-apisports-key": API_KEY
+        "x-apisports-key": FOOTBALL_API_KEY
     }
 
     params = {
