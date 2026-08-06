@@ -30,7 +30,7 @@ async def main():
             await check_crypto()
 
         except Exception as e:
-    await send_message(f"❌ Ошибка:\n{e}")
+            await send_message(f"❌ Ошибка:\n{e}")
 
         await asyncio.sleep(CHECK_INTERVAL)
 
