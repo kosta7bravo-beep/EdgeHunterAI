@@ -9,7 +9,7 @@ async def check_football():
     sent = load_sent()
 
     matches = get_matches()
-
+await send_message(f"Найдено матчей: {len(matches)}")
     for match in matches:
 
         match_id = f"{match['league']}_{match['home']}_{match['away']}"
