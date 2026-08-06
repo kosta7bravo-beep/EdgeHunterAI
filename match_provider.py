@@ -20,7 +20,7 @@ def get_matches():
             return []
 
         data = response.json()
-
+        print(data)
         matches = []
 
         for item in data.get("response", []):
