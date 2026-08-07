@@ -25,15 +25,20 @@ async def main():
 
     while True:
         try:
-            await check_football()
-            await check_live()
-            await check_crypto()
+    await send_message("🔄 Начинаю проверку")
 
-        except Exception as e:
-            await send_message(f"❌ Ошибка:\n{e}")
+    await check_football()
+    await send_message("✅ Футбол проверен")
 
-        await asyncio.sleep(CHECK_INTERVAL)
+    await check_live()
+    await send_message("✅ Live проверен")
 
+    await check_crypto()
+    await send_message("✅ Крипта проверена")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    await send_message("😴 Засыпаю на 15 минут")
+
+except Exception as e:
+    await send_message(f"❌ Ошибка:\n{e}")
+
+await asyncio.sleep(CHECK_INTERVAL)
