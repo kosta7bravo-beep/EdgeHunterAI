@@ -21,7 +21,7 @@ def get_matches():
             BASE_URL,
             headers=headers,
             params=params,
-            timeout=20
+            timeout=5
         )
 
         print("STATUS:", response.status_code)
