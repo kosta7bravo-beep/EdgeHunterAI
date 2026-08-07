@@ -7,7 +7,11 @@ from sent_storage import load_sent, save_sent
 async def check_football():
     sent = load_sent()
 
+    try:
     matches = get_matches()
+except Exception as e:
+    await send_message(f"⚠️ MATCH_PROVIDER\n{e}")
+    return
     await send_message(f"⚽ Найдено матчей: {len(matches)}")
 
     for match in matches:
