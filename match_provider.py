@@ -11,7 +11,8 @@ def get_matches():
     }
 
     params = {
-        "next": 20
+    "live": "all"
+    }
     }
 
     try:
