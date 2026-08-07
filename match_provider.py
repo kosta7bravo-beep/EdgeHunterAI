@@ -13,7 +13,7 @@ def get_matches():
     params = {
     "live": "all"
     }
-    }
+    
 
     try:
         response = requests.get(
