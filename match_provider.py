@@ -11,7 +11,7 @@ def get_matches():
     }
 
     params = {
-        "next": 20
+        "date": "2026-08-07"
     }
 
     response = requests.get(
