@@ -5,7 +5,7 @@ BASE_URL = "https://v3.football.api-sports.io/fixtures"
 
 
 def get_matches():
-    raise Exception("MATCH_PROVIDER_TEST")
+    
 
     headers = {
         "x-apisports-key": FOOTBALL_API_KEY
