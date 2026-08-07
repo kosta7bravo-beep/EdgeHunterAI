@@ -5,7 +5,6 @@ BASE_URL = "https://v3.football.api-sports.io/fixtures"
 
 
 def get_matches():
-    
 
     headers = {
         "x-apisports-key": FOOTBALL_API_KEY
@@ -16,28 +15,33 @@ def get_matches():
     }
 
     try:
-        print("=== START API REQUEST ===")
+        print("========== API START ==========")
         print("KEY LENGTH:", len(FOOTBALL_API_KEY))
 
         response = requests.get(
             BASE_URL,
             headers=headers,
             params=params,
-            timeout=5
+            timeout=10
         )
 
         print("STATUS:", response.status_code)
         print("URL:", response.url)
 
+        print("RAW RESPONSE:")
+        print(response.text[:1500])
+
+        if response.status_code != 200:
+            return []
+
         data = response.json()
 
-        print("RESULTS:", len(data.get("response", [])))
-        print("ERROR:", data.get("errors"))
-        print("MESSAGE:", data.get("message"))
+        print("RESPONSE COUNT:", len(data.get("response", [])))
 
         matches = []
 
         for item in data.get("response", []):
+
             matches.append({
                 "league": item["league"]["name"],
                 "home": item["teams"]["home"]["name"],
