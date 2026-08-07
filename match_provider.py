@@ -14,47 +14,38 @@ def get_matches():
         "next": 20
     }
 
-    try:
-        print("========== API START ==========")
-        print("KEY LENGTH:", len(FOOTBALL_API_KEY))
+    response = requests.get(
+        BASE_URL,
+        headers=headers,
+        params=params,
+        timeout=10
+    )
 
-        response = requests.get(
-            BASE_URL,
-            headers=headers,
-            params=params,
-            timeout=10
-        )
+    if response.status_code != 200:
+        raise Exception(f"API STATUS {response.status_code}")
 
-        print("STATUS:", response.status_code)
-        print("URL:", response.url)
+    data = response.json()
 
-        print("RAW RESPONSE:")
-        print(response.text[:1500])
+    if data.get("errors"):
+        raise Exception(f"API ERRORS: {data['errors']}")
 
-        if response.status_code != 200:
-            return []
+    if "response" not in data:
+        raise Exception("В ответе нет response")
 
-        data = response.json()
+    matches = []
 
-        print("RESPONSE COUNT:", len(data.get("response", [])))
+    for item in data["response"]:
 
-        matches = []
+        matches.append({
+            "league": item["league"]["name"],
+            "home": item["teams"]["home"]["name"],
+            "away": item["teams"]["away"]["name"],
+            "date": item["fixture"]["date"],
+            "odd": 2.0,
+            "home_form": 3,
+            "away_form": 3,
+            "goals_avg": 2.5
+        })
 
-        for item in data.get("response", []):
-
-            matches.append({
-                "league": item["league"]["name"],
-                "home": item["teams"]["home"]["name"],
-                "away": item["teams"]["away"]["name"],
-                "date": item["fixture"]["date"],
-                "odd": 2.0,
-                "home_form": 3,
-                "away_form": 3,
-                "goals_avg": 2.5
-            })
-
-        return matches
-
-    except Exception as e:
-        print("EXCEPTION:", e)
-        return []
+    return matches
+        
