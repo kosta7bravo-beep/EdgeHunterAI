@@ -1,5 +1,4 @@
 import requests
-from datetime import datetime
 from config import FOOTBALL_API_KEY
 
 BASE_URL = "https://v3.football.api-sports.io/fixtures"
@@ -11,11 +10,13 @@ def get_matches():
     }
 
     params = {
-    "live": "all"
+        "next": 20
     }
-    
 
     try:
+        print("=== START API REQUEST ===")
+        print("KEY LENGTH:", len(FOOTBALL_API_KEY))
+
         response = requests.get(
             BASE_URL,
             headers=headers,
@@ -23,33 +24,24 @@ def get_matches():
             timeout=20
         )
 
-        if response.status_code != 200:
-            print("Ошибка API:", response.status_code)
-            return []
+        print("STATUS:", response.status_code)
+        print("URL:", response.url)
 
         data = response.json()
+
+        print("RESULTS:", len(data.get("response", [])))
+        print("ERROR:", data.get("errors"))
+        print("MESSAGE:", data.get("message"))
 
         matches = []
 
         for item in data.get("response", []):
-
-            fixture_date = item["fixture"]["date"]
-
-            dt = datetime.fromisoformat(
-                fixture_date.replace("Z", "+00:00")
-            )
-
             matches.append({
                 "league": item["league"]["name"],
                 "home": item["teams"]["home"]["name"],
                 "away": item["teams"]["away"]["name"],
-
-                "date": dt.strftime("%d.%m.%Y"),
-                "time": dt.strftime("%H:%M"),
-
-                # Пока оставляем тестовые значения.
-                # Позже заменим их реальными.
-                "odd": 2.00,
+                "date": item["fixture"]["date"],
+                "odd": 2.0,
                 "home_form": 3,
                 "away_form": 3,
                 "goals_avg": 2.5
@@ -58,5 +50,5 @@ def get_matches():
         return matches
 
     except Exception as e:
-        print("Ошибка получения матчей:", e)
+        print("EXCEPTION:", e)
         return []
