@@ -1,7 +1,9 @@
 import requests
+from datetime import datetime
 from config import FOOTBALL_API_KEY
 
 BASE_URL = "https://v3.football.api-sports.io/fixtures"
+
 
 def get_matches():
     headers = {
@@ -9,25 +11,44 @@ def get_matches():
     }
 
     params = {
-    "live": "all"
+        "next": 20
     }
+
     try:
-        response = requests.get(BASE_URL, headers=headers, params=params, timeout=20)
+        response = requests.get(
+            BASE_URL,
+            headers=headers,
+            params=params,
+            timeout=20
+        )
 
         if response.status_code != 200:
             print("Ошибка API:", response.status_code)
             return []
 
         data = response.json()
-        print(data)
+
         matches = []
 
         for item in data.get("response", []):
+
+            fixture_date = item["fixture"]["date"]
+
+            dt = datetime.fromisoformat(
+                fixture_date.replace("Z", "+00:00")
+            )
+
             matches.append({
                 "league": item["league"]["name"],
                 "home": item["teams"]["home"]["name"],
                 "away": item["teams"]["away"]["name"],
-                "odd": 2.0,
+
+                "date": dt.strftime("%d.%m.%Y"),
+                "time": dt.strftime("%H:%M"),
+
+                # Пока оставляем тестовые значения.
+                # Позже заменим их реальными.
+                "odd": 2.00,
                 "home_form": 3,
                 "away_form": 3,
                 "goals_avg": 2.5
