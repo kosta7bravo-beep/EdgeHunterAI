@@ -1,5 +1,12 @@
+def to_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def implied_probability(odds):
-    """Перевод коэффициента в имплайд-вероятность."""
+    odds = to_float(odds)
 
     if not odds or odds <= 1:
         return None
@@ -7,21 +14,74 @@ def implied_probability(odds):
     return 1 / odds
 
 
-def value_percent(probability, odds):
-    """Расчёт математического Value."""
+def get_best_price(prices):
+    """
+    prices:
+        [
+            ("Bet365", 1.90),
+            ("Betway", 1.95)
+        ]
+    """
 
-    if probability is None or not odds or odds <= 1:
+    valid = [
+        item
+        for item in prices
+        if item[1] and item[1] > 1
+    ]
+
+    if not valid:
         return None
 
-    return (probability * odds - 1) * 100
+    return max(
+        valid,
+        key=lambda x: x[1]
+    )
 
 
-def get_best_odds(bookmakers):
+def get_market_average_probability(prices):
     """
-    Ищет лучшие коэффициенты среди Bet365 и Betway.
+    Средняя имплайд-вероятность доступных букмекеров.
     """
 
-    result = {
+    probabilities = []
+
+    for _, odds in prices:
+
+        probability = implied_probability(
+            odds
+        )
+
+        if probability:
+            probabilities.append(
+                probability
+            )
+
+    if not probabilities:
+        return None
+
+    return sum(probabilities) / len(
+        probabilities
+    )
+
+
+def calculate_value(probability, odds):
+
+    odds = to_float(odds)
+
+    if probability is None:
+        return None
+
+    if not odds or odds <= 1:
+        return None
+
+    return (
+        probability * odds - 1
+    ) * 100
+
+
+def extract_markets(odds_data):
+
+    markets = {
         "home": [],
         "draw": [],
         "away": [],
@@ -31,270 +91,342 @@ def get_best_odds(bookmakers):
         "btts_no": []
     }
 
-    for bookmaker_name in ("Bet365", "Betway"):
+    for bookmaker_name in (
+        "Bet365",
+        "Betway"
+    ):
 
-        markets = bookmakers.get(bookmaker_name, [])
+        bookmaker = odds_data.get(
+            bookmaker_name
+        )
 
-        if isinstance(markets, dict):
-            markets = list(markets.values())
-
-        if not isinstance(markets, list):
+        if not bookmaker:
             continue
 
-        for market in markets:
+        if isinstance(
+            bookmaker,
+            dict
+        ):
+            bookmaker_markets = list(
+                bookmaker.values()
+            )
+        elif isinstance(
+            bookmaker,
+            list
+        ):
+            bookmaker_markets = bookmaker
+        else:
+            continue
 
-            if not isinstance(market, dict):
+        for market in bookmaker_markets:
+
+            if not isinstance(
+                market,
+                dict
+            ):
                 continue
 
             name = (
                 market.get("name")
                 or market.get("market")
                 or market.get("key")
+                or ""
             )
 
-            odds_list = market.get("odds", [])
+            odds = market.get(
+                "odds",
+                []
+            )
 
-            if isinstance(odds_list, dict):
-                odds_list = [odds_list]
+            if isinstance(
+                odds,
+                dict
+            ):
+                odds = [odds]
 
-            if not isinstance(odds_list, list):
+            if not isinstance(
+                odds,
+                list
+            ):
                 continue
 
-            # -------------------------
+            # =====================
             # 1X2
-            # -------------------------
+            # =====================
 
-            if name == "ML":
+            if name.lower() == "ml":
 
-                for odd in odds_list:
+                for odd in odds:
 
-                    if not isinstance(odd, dict):
+                    if not isinstance(
+                        odd,
+                        dict
+                    ):
                         continue
 
-                    home = odd.get("home")
-                    draw = odd.get("draw")
-                    away = odd.get("away")
+                    home = to_float(
+                        odd.get("home")
+                    )
+
+                    draw = to_float(
+                        odd.get("draw")
+                    )
+
+                    away = to_float(
+                        odd.get("away")
+                    )
 
                     if home:
-                        result["home"].append(
-                            (bookmaker_name, float(home))
+                        markets[
+                            "home"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                home
+                            )
                         )
 
                     if draw:
-                        result["draw"].append(
-                            (bookmaker_name, float(draw))
+                        markets[
+                            "draw"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                draw
+                            )
                         )
 
                     if away:
-                        result["away"].append(
-                            (bookmaker_name, float(away))
+                        markets[
+                            "away"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                away
+                            )
                         )
 
-            # -------------------------
-            # Totals
-            # -------------------------
+            # =====================
+            # TOTALS
+            # =====================
 
-            elif name == "Totals":
+            elif name.lower() == "totals":
 
-                for odd in odds_list:
+                for odd in odds:
 
-                    if not isinstance(odd, dict):
+                    if not isinstance(
+                        odd,
+                        dict
+                    ):
                         continue
 
-                    line = (
+                    line = to_float(
                         odd.get("hdp")
-                        or odd.get("line")
-                        or odd.get("total")
                     )
 
                     if line != 2.5:
                         continue
 
-                    over = odd.get("over")
-                    under = odd.get("under")
+                    over = to_float(
+                        odd.get("over")
+                    )
+
+                    under = to_float(
+                        odd.get("under")
+                    )
 
                     if over:
-                        result["over_2_5"].append(
-                            (bookmaker_name, float(over))
+                        markets[
+                            "over_2_5"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                over
+                            )
                         )
 
                     if under:
-                        result["under_2_5"].append(
-                            (bookmaker_name, float(under))
+                        markets[
+                            "under_2_5"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                under
+                            )
                         )
 
-            # -------------------------
-            # Both Teams To Score
-            # -------------------------
+            # =====================
+            # BTTS
+            # =====================
 
-            elif name == "Both Teams To Score":
+            elif (
+                name.lower()
+                == "both teams to score"
+            ):
 
-                for odd in odds_list:
+                for odd in odds:
 
-                    if not isinstance(odd, dict):
+                    if not isinstance(
+                        odd,
+                        dict
+                    ):
                         continue
 
-                    yes = (
+                    yes = to_float(
                         odd.get("yes")
                         or odd.get("Yes")
                     )
 
-                    no = (
+                    no = to_float(
                         odd.get("no")
                         or odd.get("No")
                     )
 
                     if yes:
-                        result["btts_yes"].append(
-                            (bookmaker_name, float(yes))
+                        markets[
+                            "btts_yes"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                yes
+                            )
                         )
 
                     if no:
-                        result["btts_no"].append(
-                            (bookmaker_name, float(no))
+                        markets[
+                            "btts_no"
+                        ].append(
+                            (
+                                bookmaker_name,
+                                no
+                            )
                         )
 
-    return result
+    return markets
 
 
-def best_price(values):
-    """Возвращает лучший коэффициент и букмекера."""
+def analyze_market(
+    market_name,
+    prices
+):
 
-    if not values:
-        return None, None
+    if not prices:
+        return None
 
-    bookmaker, odds = max(
-        values,
-        key=lambda item: item[1]
+    best = get_best_price(
+        prices
     )
 
-    return odds, bookmaker
+    if not best:
+        return None
+
+    bookmaker, best_odds = best
+
+    probability = (
+        get_market_average_probability(
+            prices
+        )
+    )
+
+    value = calculate_value(
+        probability,
+        best_odds
+    )
+
+    return {
+        "bet": market_name,
+        "bookmaker": bookmaker,
+        "odds": best_odds,
+        "probability": (
+            probability * 100
+            if probability is not None
+            else None
+        ),
+        "value": value
+    }
 
 
 def analyze_match(match):
 
-    bookmakers = match.get(
+    odds_data = match.get(
         "odds_data",
         {}
     )
 
-    odds = get_best_odds(bookmakers)
+    markets = extract_markets(
+        odds_data
+    )
 
     candidates = []
 
-    markets = [
-        ("Победа хозяев", odds["home"]),
-        ("Ничья", odds["draw"]),
-        ("Победа гостей", odds["away"]),
-        ("ТБ 2.5", odds["over_2_5"]),
-        ("ТМ 2.5", odds["under_2_5"]),
-        ("Обе забьют — Да", odds["btts_yes"]),
-        ("Обе забьют — Нет", odds["btts_no"])
-    ]
+    market_names = {
+        "home": "Победа хозяев",
+        "draw": "Ничья",
+        "away": "Победа гостей",
+        "over_2_5": "ТБ 2.5",
+        "under_2_5": "ТМ 2.5",
+        "btts_yes": "Обе забьют — Да",
+        "btts_no": "Обе забьют — Нет"
+    }
 
-    for bet_name, prices in markets:
+    for market_key, market_name in (
+        market_names.items()
+    ):
 
-        if len(prices) < 1:
-            continue
-
-        best_odds, bookmaker = best_price(prices)
-
-        if not best_odds:
-            continue
-
-        # Используем среднюю имплайд-вероятность
-        # доступных букмекеров.
-        probabilities = []
-
-        for _, price in prices:
-
-            probability = implied_probability(price)
-
-            if probability:
-                probabilities.append(probability)
-
-        if not probabilities:
-            continue
-
-        average_probability = (
-            sum(probabilities)
-            / len(probabilities)
+        result = analyze_market(
+            market_name,
+            markets[market_key]
         )
 
-        value = value_percent(
-            average_probability,
-            best_odds
-        )
-
-        if value is None:
-            continue
-
-        candidates.append({
-            "bet": bet_name,
-            "odds": best_odds,
-            "bookmaker": bookmaker,
-            "probability": average_probability * 100,
-            "value": value
-        })
+        if result:
+            candidates.append(
+                result
+            )
 
     if not candidates:
 
         return {
-            "score": 0,
+            "signal": False,
             "bet": None,
             "odds": None,
+            "bookmaker": None,
             "probability": None,
             "value": None,
-            "bookmaker": None,
-            "reasons": [
-                "Недостаточно данных для анализа"
-            ]
+            "reason": "Недостаточно коэффициентов"
         }
 
-    # Выбираем максимальный Value.
+    # Самый высокий Value
     best = max(
         candidates,
-        key=lambda item: item["value"]
-    )
-
-    # Пока строгий фильтр.
-    # Никаких сигналов при небольшом преимуществе.
-    if best["value"] < 5:
-
-        return {
-            "score": 0,
-            "bet": None,
-            "odds": best["odds"],
-            "probability": best["probability"],
-            "value": best["value"],
-            "bookmaker": best["bookmaker"],
-            "reasons": [
-                "Value ниже минимального порога"
-            ]
-        }
-
-    # Условный технический score.
-    # Это НЕ вероятность выигрыша.
-    score = min(
-        95,
-        max(
-            0,
-            round(50 + best["value"] * 2)
+        key=lambda x: (
+            x["value"]
+            if x["value"] is not None
+            else -999
         )
     )
 
-    reasons = [
-        "Есть положительное Value",
-        f"Лучший коэффициент: {best['bookmaker']}",
-        f"Value: {best['value']:.2f}%"
-    ]
+    # Строгий первый фильтр
+    if (
+        best["value"] is None
+        or best["value"] < 5
+    ):
+
+        return {
+            "signal": False,
+            "bet": best["bet"],
+            "odds": best["odds"],
+            "bookmaker": best["bookmaker"],
+            "probability": best["probability"],
+            "value": best["value"],
+            "reason": "Value ниже 5%"
+        }
 
     return {
-        "score": score,
+        "signal": True,
         "bet": best["bet"],
         "odds": best["odds"],
+        "bookmaker": best["bookmaker"],
         "probability": best["probability"],
         "value": best["value"],
-        "bookmaker": best["bookmaker"],
-        "reasons": reasons
+        "reason": "Положительное Value"
             }
