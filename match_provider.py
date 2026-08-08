@@ -1,50 +1,52 @@
 import requests
-from config import FOOTBALL_API_KEY
+from config import ODDS_API_KEY
 
-BASE_URL = "https://v3.football.api-sports.io/fixtures"
+
+BASE_URL = "https://api.odds-api.io/v3/events"
 
 
 def get_matches():
 
-    headers = {
-        "x-apisports-key": FOOTBALL_API_KEY
-    }
+    if not ODDS_API_KEY:
+        raise Exception("ODDS_API_KEY не указан в переменных окружения")
 
     params = {
-        "date": "2026-08-07"
+        "apiKey": ODDS_API_KEY,
+        "sport": "football",
+        "status": "pending",
+        "limit": 20
     }
 
     response = requests.get(
         BASE_URL,
-        headers=headers,
         params=params,
-        timeout=10
+        timeout=15
     )
 
     if response.status_code != 200:
-        raise Exception(f"API STATUS {response.status_code}")
+        raise Exception(
+            f"ODDS API STATUS {response.status_code}: {response.text}"
+        )
 
     data = response.json()
 
-    if data.get("errors"):
-        raise Exception(f"API ERRORS: {data['errors']}")
+    if isinstance(data, dict) and data.get("error"):
+        raise Exception(f"ODDS API ERROR: {data['error']}")
 
-    if "response" not in data:
-        raise Exception("В ответе нет response")
+    if not isinstance(data, list):
+        raise Exception(f"Неожиданный ответ Odds API: {data}")
 
     matches = []
 
-    for item in data["response"]:
+    for item in data:
 
         matches.append({
-            "league": item["league"]["name"],
-            "home": item["teams"]["home"]["name"],
-            "away": item["teams"]["away"]["name"],
-            "date": item["fixture"]["date"],
-            "odd": 2.0,
-            "home_form": 3,
-            "away_form": 3,
-            "goals_avg": 2.5
+            "event_id": item.get("id"),
+            "league": item.get("league", {}).get("name", ""),
+            "home": item.get("home", ""),
+            "away": item.get("away", ""),
+            "date": item.get("date", ""),
+            "status": item.get("status", "")
         })
 
     return matches
