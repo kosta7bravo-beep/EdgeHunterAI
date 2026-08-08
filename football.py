@@ -2,6 +2,7 @@ from datetime import datetime
 
 from telegram_bot import send_message
 from match_provider import get_matches
+from match_analyzer import analyze_match
 
 
 def format_date(date_string):
@@ -15,157 +16,6 @@ def format_date(date_string):
         return dt.strftime("%d.%m.%Y %H:%M UTC")
     except Exception:
         return str(date_string)
-
-
-def normalize_markets(bookmaker):
-    if isinstance(bookmaker, dict):
-        return list(bookmaker.values())
-
-    if isinstance(bookmaker, list):
-        return bookmaker
-
-    return []
-
-
-def find_market(markets, name):
-    for market in markets:
-        if not isinstance(market, dict):
-            continue
-
-        market_name = (
-            market.get("name")
-            or market.get("market")
-            or market.get("key")
-            or ""
-        )
-
-        if market_name.lower() == name.lower():
-            return market
-
-    return None
-
-
-def get_odds_list(market):
-    if not market:
-        return []
-
-    odds = market.get("odds", [])
-
-    if isinstance(odds, dict):
-        odds = [odds]
-
-    return odds if isinstance(odds, list) else []
-
-
-def get_ml(markets):
-    market = find_market(markets, "ML")
-    odds = get_odds_list(market)
-
-    if not odds:
-        return None
-
-    odd = odds[0]
-
-    return {
-        "home": odd.get("home"),
-        "draw": odd.get("draw"),
-        "away": odd.get("away")
-    }
-
-
-def get_totals_25(markets):
-    market = find_market(markets, "Totals")
-    odds = get_odds_list(market)
-
-    for odd in odds:
-
-        if not isinstance(odd, dict):
-            continue
-
-        line = odd.get("hdp")
-
-        try:
-            line = float(line)
-        except (TypeError, ValueError):
-            continue
-
-        if line == 2.5:
-            return {
-                "over": odd.get("over"),
-                "under": odd.get("under")
-            }
-
-    return None
-
-
-def get_btts(markets):
-    market = find_market(
-        markets,
-        "Both Teams To Score"
-    )
-
-    odds = get_odds_list(market)
-
-    if not odds:
-        return None
-
-    odd = odds[0]
-
-    yes = odd.get("yes") or odd.get("Yes")
-    no = odd.get("no") or odd.get("No")
-
-    if yes is None:
-        yes = odd.get("home")
-
-    if no is None:
-        no = odd.get("away")
-
-    return {
-        "yes": yes,
-        "no": no
-    }
-
-
-def format_bookmaker(name, markets):
-
-    ml = get_ml(markets)
-    totals = get_totals_25(markets)
-    btts = get_btts(markets)
-
-    text = f"💰 <b>{name}</b>\n"
-
-    text += "🏆 1X2\n"
-
-    if ml:
-        text += (
-            f"П1: {ml['home'] or '—'} | "
-            f"X: {ml['draw'] or '—'} | "
-            f"П2: {ml['away'] or '—'}\n"
-        )
-    else:
-        text += "нет данных\n"
-
-    text += "\n⚽ <b>ТБ/ТМ 2.5</b>\n"
-
-    if totals:
-        text += (
-            f"ТБ 2.5: {totals['over'] or '—'}\n"
-            f"ТМ 2.5: {totals['under'] or '—'}\n"
-        )
-    else:
-        text += "нет данных\n"
-
-    text += "\n🎯 <b>Обе забьют</b>\n"
-
-    if btts:
-        text += (
-            f"Да: {btts['yes'] or '—'}\n"
-            f"Нет: {btts['no'] or '—'}\n"
-        )
-    else:
-        text += "нет данных\n"
-
-    return text
 
 
 async def check_football():
@@ -186,56 +36,124 @@ async def check_football():
         return
 
     await send_message(
-        f"⚽ <b>Найдено реальных матчей: "
-        f"{len(matches)}</b>"
+        f"⚽ <b>Анализирую {len(matches)} "
+        f"реальных матчей...</b>"
     )
 
-    for index, match in enumerate(matches, 1):
+    signals = []
 
-        home = match.get("home", "?")
-        away = match.get("away", "?")
-        league = match.get("league", "?")
-        date = format_date(match.get("date"))
+    for match in matches:
 
-        bookmakers = match.get(
-            "odds_data",
-            {}
+        try:
+            result = analyze_match(match)
+
+        except Exception as e:
+            await send_message(
+                f"⚠️ Ошибка анализа "
+                f"{match.get('home', '?')} — "
+                f"{match.get('away', '?')}:\n{e}"
+            )
+            continue
+
+        if result.get("signal"):
+
+            signals.append(
+                (match, result)
+            )
+
+    # Нет подходящих сигналов
+    if not signals:
+
+        await send_message(
+            "🔎 <b>EDGEHUNTER AI</b>\n\n"
+            "Сегодня подходящих Value-сигналов "
+            "не найдено.\n\n"
+            "Это нормально — бот не будет "
+            "придумывать ставку, если "
+            "преимущества недостаточно."
+        )
+
+        return
+
+    # Отправляем найденные сигналы
+    for match, result in signals:
+
+        home = match.get(
+            "home",
+            "?"
+        )
+
+        away = match.get(
+            "away",
+            "?"
+        )
+
+        league = match.get(
+            "league",
+            "?"
+        )
+
+        date = format_date(
+            match.get("date")
+        )
+
+        probability = result.get(
+            "probability"
+        )
+
+        value = result.get(
+            "value"
+        )
+
+        odds = result.get(
+            "odds"
+        )
+
+        bookmaker = result.get(
+            "bookmaker",
+            "—"
+        )
+
+        probability_text = (
+            f"{probability:.1f}%"
+            if probability is not None
+            else "—"
+        )
+
+        value_text = (
+            f"{value:+.2f}%"
+            if value is not None
+            else "—"
+        )
+
+        odds_text = (
+            f"{odds:.3f}"
+            if odds is not None
+            else "—"
         )
 
         text = (
-            f"⚽ <b>{index}. "
-            f"{home} — {away}</b>\n"
+            "🔥 <b>EDGEHUNTER AI</b>\n\n"
             f"🏆 {league}\n"
+            f"⚽ <b>{home} — {away}</b>\n"
             f"📅 {date}\n\n"
+
+            f"🎯 <b>СТАВКА: "
+            f"{result.get('bet', '—')}</b>\n\n"
+
+            f"💰 Коэффициент: "
+            f"<b>{odds_text}</b>\n"
+            f"🏦 Букмекер: "
+            f"<b>{bookmaker}</b>\n\n"
+
+            f"📊 Рыночная вероятность: "
+            f"{probability_text}\n"
+            f"📈 Value: "
+            f"<b>{value_text}</b>\n\n"
+
+            "ℹ️ Это рыночный Value-сигнал. "
+            "Статистика команд пока не подключена."
         )
 
-        for bookmaker_name in (
-            "Bet365",
-            "Betway"
-        ):
-
-            bookmaker = bookmakers.get(
-                bookmaker_name
-            )
-
-            if bookmaker is None:
-                text += (
-                    f"💰 <b>{bookmaker_name}</b>\n"
-                    "нет данных\n\n"
-                )
-                continue
-
-            markets = normalize_markets(bookmaker)
-
-            text += format_bookmaker(
-                bookmaker_name,
-                markets
-            )
-
-            text += "\n"
-
-        if len(text) <= 3800:
-            await send_message(text)
-        else:
-            await send_message(text[:3800])
+        await send_message(text)
       
