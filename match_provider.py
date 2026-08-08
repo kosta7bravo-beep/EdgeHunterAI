@@ -6,7 +6,8 @@ from config import ODDS_API_KEY
 EVENTS_URL = "https://api.odds-api.io/v3/events"
 ODDS_URL = "https://api.odds-api.io/v3/odds/multi"
 
-# Обновляем список матчей раз в 30 минут
+BOOKMAKERS = "Bet365,Betway"
+
 EVENTS_CACHE_TIME = 1800
 
 _cached_events = []
@@ -14,14 +15,15 @@ _last_events_update = 0
 
 
 def get_events():
-
     global _cached_events
     global _last_events_update
 
     now = time.time()
 
-    # Используем сохранённые события
-    if _cached_events and now - _last_events_update < EVENTS_CACHE_TIME:
+    if (
+        _cached_events
+        and now - _last_events_update < EVENTS_CACHE_TIME
+    ):
         return _cached_events
 
     params = {
@@ -54,7 +56,6 @@ def get_events():
             f"Неожиданный ответ events: {data}"
         )
 
-    # Берём максимум 10 событий
     _cached_events = data[:10]
     _last_events_update = now
 
@@ -62,15 +63,16 @@ def get_events():
 
 
 def get_odds(event_ids):
-
     if not event_ids:
         return {}
 
     params = {
         "apiKey": ODDS_API_KEY,
         "eventIds": ",".join(
-            str(x) for x in event_ids[:10]
-        )
+            str(event_id)
+            for event_id in event_ids[:10]
+        ),
+        "bookmakers": BOOKMAKERS
     }
 
     response = requests.get(
@@ -100,13 +102,10 @@ def get_odds(event_ids):
     result = {}
 
     for event in data:
-
         event_id = event.get("id")
 
-        if not event_id:
-            continue
-
-        result[event_id] = event
+        if event_id:
+            result[event_id] = event
 
     return result
 
@@ -115,7 +114,7 @@ def get_matches():
 
     if not ODDS_API_KEY:
         raise Exception(
-            "ODDS_API_KEY не указан"
+            "ODDS_API_KEY не указан в переменных окружения"
         )
 
     events = get_events()
@@ -136,11 +135,7 @@ def get_matches():
     for event in events:
 
         event_id = event.get("id")
-
-        odds_event = odds_data.get(
-            event_id,
-            {}
-        )
+        odds_event = odds_data.get(event_id, {})
 
         matches.append({
             "event_id": event_id,
