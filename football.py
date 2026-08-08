@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from telegram_bot import send_message
 from match_provider import get_matches
@@ -12,94 +12,182 @@ def format_date(date_string):
         dt = datetime.fromisoformat(
             date_string.replace("Z", "+00:00")
         )
-
-        # Показываем время по UTC
         return dt.strftime("%d.%m.%Y %H:%M UTC")
-
     except Exception:
         return str(date_string)
 
 
-def format_odds(bookmakers):
+def get_market(markets, market_name):
     """
-    Показывает полученные от API коэффициенты.
-    Мы пока не предполагаем конкретную структуру рынка,
-    а выводим доступные данные безопасно.
+    Находит конкретный рынок.
     """
 
-    if not bookmakers:
-        return "❌ Коэффициенты не получены"
+    for market in markets:
 
-    text = ""
-
-    for bookmaker_name, markets in bookmakers.items():
-
-        text += f"\n💰 <b>{bookmaker_name}</b>\n"
-
-        if not markets:
-            text += "Нет рынков\n"
+        if not isinstance(market, dict):
             continue
 
-        if isinstance(markets, dict):
-            markets = [markets]
+        name = (
+            market.get("name")
+            or market.get("market")
+            or market.get("key")
+        )
 
-        if not isinstance(markets, list):
-            text += f"{markets}\n"
+        if name == market_name:
+            return market
+
+    return None
+
+
+def get_market_odds(market):
+    """
+    Возвращает список коэффициентов рынка.
+    """
+
+    if not market:
+        return []
+
+    odds = market.get("odds", [])
+
+    if isinstance(odds, dict):
+        odds = [odds]
+
+    if not isinstance(odds, list):
+        return []
+
+    return odds
+
+
+def format_ml(markets):
+    """
+    П1 / X / П2
+    """
+
+    market = get_market(markets, "ML")
+
+    if not market:
+        return "нет данных"
+
+    odds = get_market_odds(market)
+
+    if not odds:
+        return "нет данных"
+
+    odd = odds[0]
+
+    home = odd.get("home", "—")
+    draw = odd.get("draw", "—")
+    away = odd.get("away", "—")
+
+    return (
+        f"П1: {home} | "
+        f"X: {draw} | "
+        f"П2: {away}"
+    )
+
+
+def format_totals(markets):
+    """
+    Показываем все основные линии тотала.
+    Это временно нужно для определения ТБ/ТМ 2.5.
+    """
+
+    market = get_market(markets, "Totals")
+
+    if not market:
+        return "нет данных"
+
+    odds = get_market_odds(market)
+
+    if not odds:
+        return "нет данных"
+
+    result = []
+
+    for odd in odds:
+
+        if not isinstance(odd, dict):
             continue
 
-        for market in markets:
+        over = odd.get("over")
+        under = odd.get("under")
+        line = (
+            odd.get("hdp")
+            or odd.get("line")
+            or odd.get("total")
+        )
 
-            if not isinstance(market, dict):
-                continue
+        if over is None and under is None:
+            continue
 
-            market_name = (
-                market.get("name")
-                or market.get("market")
-                or market.get("key")
-                or "Рынок"
-            )
+        result.append(
+            f"{line}: ТБ {over} / ТМ {under}"
+        )
 
-            text += f"  📊 {market_name}\n"
+    if not result:
+        return "нет данных"
 
-            odds = market.get("odds", [])
+    return "\n".join(result)
 
-            if isinstance(odds, dict):
-                odds = [odds]
 
-            if isinstance(odds, list):
+def format_btts(markets):
+    """
+    Обе забьют — Да / Нет.
+    """
 
-                for odd in odds:
+    market = get_market(
+        markets,
+        "Both Teams To Score"
+    )
 
-                    if not isinstance(odd, dict):
-                        continue
+    if not market:
+        return "нет данных"
 
-                    # Пытаемся показать основные значения
-                    values = []
+    odds = get_market_odds(market)
 
-                    for key, value in odd.items():
+    if not odds:
+        return "нет данных"
 
-                        if key in (
-                            "home",
-                            "draw",
-                            "away",
-                            "over",
-                            "under",
-                            "price",
-                            "odds"
-                        ):
-                            values.append(
-                                f"{key}: {value}"
-                            )
+    odd = odds[0]
 
-                    if values:
-                        text += (
-                            "    "
-                            + " | ".join(values)
-                            + "\n"
-                        )
+    yes = (
+        odd.get("yes")
+        or odd.get("Yes")
+        or odd.get("home")
+    )
 
-            else:
-                text += f"    {odds}\n"
+    no = (
+        odd.get("no")
+        or odd.get("No")
+        or odd.get("away")
+    )
+
+    return (
+        f"Да: {yes or '—'} | "
+        f"Нет: {no or '—'}"
+    )
+
+
+def format_bookmaker(bookmaker_name, markets):
+
+    text = (
+        f"💰 <b>{bookmaker_name}</b>\n"
+    )
+
+    text += (
+        "🏆 1X2\n"
+        f"{format_ml(markets)}\n\n"
+    )
+
+    text += (
+        "⚽ Тоталы\n"
+        f"{format_totals(markets)}\n\n"
+    )
+
+    text += (
+        "🎯 Обе забьют\n"
+        f"{format_btts(markets)}\n"
+    )
 
     return text
 
@@ -110,15 +198,19 @@ async def check_football():
         matches = get_matches()
 
     except Exception as e:
+
         await send_message(
             f"⚠️ <b>MATCH_PROVIDER</b>\n{e}"
         )
+
         return
 
     if not matches:
+
         await send_message(
             "⚽ Матчей сейчас не найдено."
         )
+
         return
 
     await send_message(
@@ -126,21 +218,25 @@ async def check_football():
         f"{len(matches)}</b>"
     )
 
-    # Один общий Telegram-пакет,
-    # чтобы не отправлять 10 отдельных сообщений
-    text = "⚽ <b>EDGEHUNTER AI — РЕАЛЬНЫЕ МАТЧИ</b>\n\n"
-
     for index, match in enumerate(matches, 1):
 
-        league = match.get("league") or "Неизвестная лига"
-        home = match.get("home") or "?"
-        away = match.get("away") or "?"
-        date = format_date(match.get("date"))
+        league = (
+            match.get("league")
+            or "Неизвестная лига"
+        )
 
-        text += (
-            f"<b>{index}. {home} — {away}</b>\n"
-            f"🏆 {league}\n"
-            f"📅 {date}\n"
+        home = (
+            match.get("home")
+            or "?"
+        )
+
+        away = (
+            match.get("away")
+            or "?"
+        )
+
+        date = format_date(
+            match.get("date")
         )
 
         bookmakers = match.get(
@@ -148,33 +244,47 @@ async def check_football():
             {}
         )
 
-        text += format_odds(bookmakers)
+        text = (
+            f"⚽ <b>{index}. "
+            f"{home} — {away}</b>\n"
+            f"🏆 {league}\n"
+            f"📅 {date}\n\n"
+        )
 
-        text += "\n"
+        for bookmaker_name in (
+            "Bet365",
+            "Betway"
+        ):
 
-    # Telegram имеет ограничение на размер сообщения.
-    # Если вдруг данных слишком много — отправляем частями.
-    max_length = 3800
+            markets = bookmakers.get(
+                bookmaker_name
+            )
 
-    if len(text) <= max_length:
+            if markets is None:
+                continue
 
-        await send_message(text)
+            if isinstance(markets, dict):
+                markets = list(
+                    markets.values()
+                )
 
-    else:
+            if not isinstance(markets, list):
+                continue
 
-        current = ""
+            text += format_bookmaker(
+                bookmaker_name,
+                markets
+            )
 
-        for line in text.splitlines(True):
+            text += "\n\n"
 
-            if len(current) + len(line) > max_length:
+        # Telegram ограничивает длину сообщения
+        if len(text) > 3800:
 
-                if current:
-                    await send_message(current)
+            await send_message(
+                text[:3800]
+            )
 
-                current = line
+        else:
 
-            else:
-                current += line
-
-        if current:
-            await send_message(current)
+            await send_message(text)
