@@ -1,46 +1,180 @@
+from datetime import datetime, timezone
+
 from telegram_bot import send_message
-from match_analyzer import analyze_match
 from match_provider import get_matches
-from sent_storage import load_sent, save_sent
+
+
+def format_date(date_string):
+    if not date_string:
+        return "—"
+
+    try:
+        dt = datetime.fromisoformat(
+            date_string.replace("Z", "+00:00")
+        )
+
+        # Показываем время по UTC
+        return dt.strftime("%d.%m.%Y %H:%M UTC")
+
+    except Exception:
+        return str(date_string)
+
+
+def format_odds(bookmakers):
+    """
+    Показывает полученные от API коэффициенты.
+    Мы пока не предполагаем конкретную структуру рынка,
+    а выводим доступные данные безопасно.
+    """
+
+    if not bookmakers:
+        return "❌ Коэффициенты не получены"
+
+    text = ""
+
+    for bookmaker_name, markets in bookmakers.items():
+
+        text += f"\n💰 <b>{bookmaker_name}</b>\n"
+
+        if not markets:
+            text += "Нет рынков\n"
+            continue
+
+        if isinstance(markets, dict):
+            markets = [markets]
+
+        if not isinstance(markets, list):
+            text += f"{markets}\n"
+            continue
+
+        for market in markets:
+
+            if not isinstance(market, dict):
+                continue
+
+            market_name = (
+                market.get("name")
+                or market.get("market")
+                or market.get("key")
+                or "Рынок"
+            )
+
+            text += f"  📊 {market_name}\n"
+
+            odds = market.get("odds", [])
+
+            if isinstance(odds, dict):
+                odds = [odds]
+
+            if isinstance(odds, list):
+
+                for odd in odds:
+
+                    if not isinstance(odd, dict):
+                        continue
+
+                    # Пытаемся показать основные значения
+                    values = []
+
+                    for key, value in odd.items():
+
+                        if key in (
+                            "home",
+                            "draw",
+                            "away",
+                            "over",
+                            "under",
+                            "price",
+                            "odds"
+                        ):
+                            values.append(
+                                f"{key}: {value}"
+                            )
+
+                    if values:
+                        text += (
+                            "    "
+                            + " | ".join(values)
+                            + "\n"
+                        )
+
+            else:
+                text += f"    {odds}\n"
+
+    return text
 
 
 async def check_football():
-    sent = load_sent()
 
     try:
         matches = get_matches()
+
     except Exception as e:
-        await send_message(f"⚠️ MATCH_PROVIDER\n{e}")
+        await send_message(
+            f"⚠️ <b>MATCH_PROVIDER</b>\n{e}"
+        )
         return
 
-    await send_message(f"⚽ Найдено матчей: {len(matches)}")
+    if not matches:
+        await send_message(
+            "⚽ Матчей сейчас не найдено."
+        )
+        return
 
-    for match in matches:
+    await send_message(
+        f"⚽ <b>Найдено реальных матчей: "
+        f"{len(matches)}</b>"
+    )
 
-        match_id = f"{match['league']}_{match['home']}_{match['away']}"
+    # Один общий Telegram-пакет,
+    # чтобы не отправлять 10 отдельных сообщений
+    text = "⚽ <b>EDGEHUNTER AI — РЕАЛЬНЫЕ МАТЧИ</b>\n\n"
 
-        if match_id in sent:
-            continue
+    for index, match in enumerate(matches, 1):
 
-        result = analyze_match(match)
+        league = match.get("league") or "Неизвестная лига"
+        home = match.get("home") or "?"
+        away = match.get("away") or "?"
+        date = format_date(match.get("date"))
 
-        if result["score"] >= 80:
+        text += (
+            f"<b>{index}. {home} — {away}</b>\n"
+            f"🏆 {league}\n"
+            f"📅 {date}\n"
+        )
 
-            text = (
-                "🔥 <b>EDGEHUNTER AI</b>\n\n"
-                "📅 Дата: скоро будет добавлена\n"
-                "🕒 Время: скоро будет добавлено\n\n"
-                f"🏆 {match['league']}\n"
-                f"⚽ {match['home']} — {match['away']}\n\n"
-                f"🎯 <b>СТАВКА:</b> {result['bet']}\n\n"
-                f"📊 Вероятность: {result['probability']}%\n"
-                f"💰 Рекомендуемый коэффициент: {result['odds']}\n\n"
-                "📋 Причины:\n• "
-                + "\n• ".join(result["reasons"])
-            )
+        bookmakers = match.get(
+            "odds_data",
+            {}
+        )
 
-            await send_message(text)
+        text += format_odds(bookmakers)
 
-            sent.append(match_id)
+        text += "\n"
 
-    save_sent(sent)
+    # Telegram имеет ограничение на размер сообщения.
+    # Если вдруг данных слишком много — отправляем частями.
+    max_length = 3800
+
+    if len(text) <= max_length:
+
+        await send_message(text)
+
+    else:
+
+        current = ""
+
+        for line in text.splitlines(True):
+
+            if len(current) + len(line) > max_length:
+
+                if current:
+                    await send_message(current)
+
+                current = line
+
+            else:
+                current += line
+
+        if current:
+            await send_message(current)
