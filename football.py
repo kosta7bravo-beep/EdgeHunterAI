@@ -2,6 +2,7 @@ from datetime import datetime
 
 from telegram_bot import send_message
 from match_provider import get_matches
+from match_analyzer import analyze_match
 
 
 def format_date(date_string):
@@ -15,6 +16,141 @@ def format_date(date_string):
         return dt.strftime("%d.%m.%Y %H:%M UTC")
     except Exception:
         return str(date_string)
+
+
+def get_market(markets, market_name):
+    for market in markets:
+
+        if not isinstance(market, dict):
+            continue
+
+        name = (
+            market.get("name")
+            or market.get("market")
+            or market.get("key")
+        )
+
+        if name == market_name:
+            return market
+
+    return None
+
+
+def get_odds(market):
+    if not market:
+        return []
+
+    odds = market.get("odds", [])
+
+    if isinstance(odds, dict):
+        odds = [odds]
+
+    return odds if isinstance(odds, list) else []
+
+
+def format_ml(markets):
+    market = get_market(markets, "ML")
+
+    if not market:
+        return "нет данных"
+
+    odds = get_odds(market)
+
+    if not odds:
+        return "нет данных"
+
+    odd = odds[0]
+
+    return (
+        f"П1: {odd.get('home', '—')} | "
+        f"X: {odd.get('draw', '—')} | "
+        f"П2: {odd.get('away', '—')}"
+    )
+
+
+def format_totals_25(markets):
+    market = get_market(markets, "Totals")
+
+    if not market:
+        return "нет данных"
+
+    odds = get_odds(market)
+
+    for odd in odds:
+
+        if not isinstance(odd, dict):
+            continue
+
+        line = (
+            odd.get("hdp")
+            or odd.get("line")
+            or odd.get("total")
+        )
+
+        try:
+            if float(line) != 2.5:
+                continue
+        except (TypeError, ValueError):
+            continue
+
+        return (
+            f"ТБ 2.5: {odd.get('over', '—')} | "
+            f"ТМ 2.5: {odd.get('under', '—')}"
+        )
+
+    return "линия 2.5 не найдена"
+
+
+def format_btts(markets):
+    market = get_market(
+        markets,
+        "Both Teams To Score"
+    )
+
+    if not market:
+        return "нет данных"
+
+    odds = get_odds(market)
+
+    if not odds:
+        return "нет данных"
+
+    odd = odds[0]
+
+    yes = odd.get("yes") or odd.get("Yes")
+    no = odd.get("no") or odd.get("No")
+
+    if yes is None:
+        yes = odd.get("home")
+
+    if no is None:
+        no = odd.get("away")
+
+    return (
+        f"Да: {yes if yes is not None else '—'} | "
+        f"Нет: {no if no is not None else '—'}"
+    )
+
+
+def format_bookmaker(name, markets):
+    text = f"💰 <b>{name}</b>\n"
+
+    text += (
+        "🏆 1X2\n"
+        f"{format_ml(markets)}\n"
+    )
+
+    text += (
+        "⚽ ТБ/ТМ 2.5\n"
+        f"{format_totals_25(markets)}\n"
+    )
+
+    text += (
+        "🎯 Обе забьют\n"
+        f"{format_btts(markets)}\n"
+    )
+
+    return text
 
 
 async def check_football():
@@ -35,11 +171,11 @@ async def check_football():
         return
 
     await send_message(
-        f"🔎 <b>BETWAY DIAGNOSTIC</b>\n\n"
-        f"Найдено матчей: {len(matches)}"
+        f"⚽ <b>Найдено реальных матчей: "
+        f"{len(matches)}</b>"
     )
 
-    for index, match in enumerate(matches[:3], 1):
+    for index, match in enumerate(matches, 1):
 
         home = match.get("home", "?")
         away = match.get("away", "?")
@@ -51,52 +187,49 @@ async def check_football():
             {}
         )
 
-        betway = bookmakers.get("Betway")
-
         text = (
-            f"🔎 <b>{index}. "
+            f"⚽ <b>{index}. "
             f"{home} — {away}</b>\n"
             f"🏆 {league}\n"
             f"📅 {date}\n\n"
         )
 
-        if not betway:
-            text += "❌ Betway: данных нет\n"
-            await send_message(text)
-            continue
+        for bookmaker_name in (
+            "Bet365",
+            "Betway"
+        ):
 
-        if isinstance(betway, dict):
-            markets = list(betway.values())
-        elif isinstance(betway, list):
-            markets = betway
-        else:
-            text += (
-                f"⚠️ Неизвестный формат Betway:\n"
-                f"{betway}\n"
+            markets = bookmakers.get(
+                bookmaker_name
             )
-            await send_message(text)
-            continue
 
-        text += "💰 <b>РЫНКИ BETWAY:</b>\n"
-
-        found = False
-
-        for market in markets:
-
-            if not isinstance(market, dict):
+            if markets is None:
+                text += (
+                    f"💰 <b>{bookmaker_name}</b>\n"
+                    "❌ данных нет\n\n"
+                )
                 continue
 
-            name = (
-                market.get("name")
-                or market.get("market")
-                or market.get("key")
-                or "Без названия"
+            if isinstance(markets, dict):
+                markets = list(markets.values())
+
+            if not isinstance(markets, list):
+                text += (
+                    f"💰 <b>{bookmaker_name}</b>\n"
+                    "❌ неизвестный формат данных\n\n"
+                )
+                continue
+
+            text += format_bookmaker(
+                bookmaker_name,
+                markets
             )
 
-            text += f"• {name}\n"
-            found = True
+            text += "\n"
 
-        if not found:
-            text += "❌ Названия рынков не найдены\n"
-
-        await send_message(text)
+        # Пока просто показываем реальные данные.
+        # Прогнозы подключим после проверки.
+        if len(text) > 3800:
+            await send_message(text[:3800])
+        else:
+            await send_message(text)
