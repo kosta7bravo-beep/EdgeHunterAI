@@ -1,3 +1,4 @@
+import time
 import requests
 from config import ODDS_API_KEY
 
@@ -5,114 +6,28 @@ from config import ODDS_API_KEY
 EVENTS_URL = "https://api.odds-api.io/v3/events"
 ODDS_URL = "https://api.odds-api.io/v3/odds/multi"
 
+# Обновляем список матчей раз в 30 минут
+EVENTS_CACHE_TIME = 1800
 
-def get_odds(event_ids):
-
-    if not event_ids:
-        return {}
-
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "eventIds": ",".join(str(x) for x in event_ids[:10])
-    }
-
-    response = requests.get(
-        ODDS_URL,
-        params=params,
-        timeout=15
-    )
-
-    if response.status_code != 200:
-        raise Exception(
-            f"ODDS API STATUS {response.status_code}: {response.text}"
-        )
-
-    data = response.json()
-
-    if isinstance(data, dict) and data.get("error"):
-        raise Exception(f"ODDS API ERROR: {data['error']}")
-
-    if not isinstance(data, list):
-        raise Exception(f"Неожиданный ответ odds/multi: {data}")
-
-    result = {}
-
-    for event in data:
-
-        event_id = event.get("id")
-
-        if not event_id:
-            continue
-
-        event_odds = {
-            "home": None,
-            "draw": None,
-            "away": None,
-            "over_2_5": None,
-            "under_2_5": None
-        }
-
-        bookmakers = event.get("bookmakers", {})
-
-        for bookmaker_markets in bookmakers.values():
-
-            for market in bookmaker_markets:
-
-                market_name = market.get("name")
-                odds_list = market.get("odds", [])
-
-                if not odds_list:
-                    continue
-
-                odds = odds_list[0]
-
-                # Победа / ничья / победа гостей
-                if market_name == "ML":
-
-                    if odds.get("home"):
-                        event_odds["home"] = float(odds["home"])
-
-                    if odds.get("draw"):
-                        event_odds["draw"] = float(odds["draw"])
-
-                    if odds.get("away"):
-                        event_odds["away"] = float(odds["away"])
-
-                # Тотал
-                elif market_name == "Totals":
-
-                    hdp = odds.get("hdp")
-
-                    if hdp == 2.5:
-
-                        if odds.get("over"):
-                            event_odds["over_2_5"] = float(
-                                odds["over"]
-                            )
-
-                        if odds.get("under"):
-                            event_odds["under_2_5"] = float(
-                                odds["under"]
-                            )
-
-        result[event_id] = event_odds
-
-    return result
+_cached_events = []
+_last_events_update = 0
 
 
-def get_matches():
+def get_events():
 
-    if not ODDS_API_KEY:
-        raise Exception(
-            "ODDS_API_KEY не указан в переменных окружения"
-        )
+    global _cached_events
+    global _last_events_update
 
-    # Получаем ближайшие футбольные матчи
+    now = time.time()
+
+    # Используем сохранённые события
+    if _cached_events and now - _last_events_update < EVENTS_CACHE_TIME:
+        return _cached_events
+
     params = {
         "apiKey": ODDS_API_KEY,
         "sport": "football",
-        "status": "pending",
-        "limit": 10
+        "status": "pending"
     }
 
     response = requests.get(
@@ -127,29 +42,93 @@ def get_matches():
             f"{response.text}"
         )
 
-    events = response.json()
+    data = response.json()
 
-    if isinstance(events, dict) and events.get("error"):
+    if isinstance(data, dict) and data.get("error"):
         raise Exception(
-            f"EVENTS API ERROR: {events['error']}"
+            f"EVENTS API ERROR: {data['error']}"
         )
 
-    if not isinstance(events, list):
+    if not isinstance(data, list):
         raise Exception(
-            f"Неожиданный ответ events: {events}"
+            f"Неожиданный ответ events: {data}"
         )
+
+    # Берём максимум 10 событий
+    _cached_events = data[:10]
+    _last_events_update = now
+
+    return _cached_events
+
+
+def get_odds(event_ids):
+
+    if not event_ids:
+        return {}
+
+    params = {
+        "apiKey": ODDS_API_KEY,
+        "eventIds": ",".join(
+            str(x) for x in event_ids[:10]
+        )
+    }
+
+    response = requests.get(
+        ODDS_URL,
+        params=params,
+        timeout=15
+    )
+
+    if response.status_code != 200:
+        raise Exception(
+            f"ODDS API STATUS {response.status_code}: "
+            f"{response.text}"
+        )
+
+    data = response.json()
+
+    if isinstance(data, dict) and data.get("error"):
+        raise Exception(
+            f"ODDS API ERROR: {data['error']}"
+        )
+
+    if not isinstance(data, list):
+        raise Exception(
+            f"Неожиданный ответ odds/multi: {data}"
+        )
+
+    result = {}
+
+    for event in data:
+
+        event_id = event.get("id")
+
+        if not event_id:
+            continue
+
+        result[event_id] = event
+
+    return result
+
+
+def get_matches():
+
+    if not ODDS_API_KEY:
+        raise Exception(
+            "ODDS_API_KEY не указан"
+        )
+
+    events = get_events()
 
     if not events:
         return []
 
-    # ID матчей
     event_ids = [
         event.get("id")
         for event in events
         if event.get("id")
     ]
 
-    # Один batch-запрос коэффициентов
     odds_data = get_odds(event_ids)
 
     matches = []
@@ -158,7 +137,7 @@ def get_matches():
 
         event_id = event.get("id")
 
-        odds = odds_data.get(
+        odds_event = odds_data.get(
             event_id,
             {}
         )
@@ -178,16 +157,9 @@ def get_matches():
 
             "status": event.get("status", ""),
 
-            "home_odds": odds.get("home"),
-
-            "draw_odds": odds.get("draw"),
-
-            "away_odds": odds.get("away"),
-
-            "over_2_5": odds.get("over_2_5"),
-
-            "under_2_5": odds.get("under_2_5")
+            "odds_data": odds_event.get(
+                "bookmakers", {}
+            )
         })
 
     return matches
-        
