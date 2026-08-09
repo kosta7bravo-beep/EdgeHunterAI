@@ -247,7 +247,7 @@ def get_matches(limit=50):
 
     now_timestamp = time.time()
 
-    # CACHE — не обращаемся к API чаще одного раза в 30 минут
+    # CACHE — один запрос максимум раз в 30 минут
     if (
         _cached_matches is not None
         and now_timestamp - _cached_matches_time
@@ -261,12 +261,13 @@ def get_matches(limit=50):
         days=MATCHES_DAYS_AHEAD
     )
 
-    # Один запрос к API.
-    # Не делаем отдельный запрос на каждый день.
+    # Пока тестируем только Bundesliga.
+    # BBS coverage показывает именно такой пример запроса.
     data = _request(
         f"{BASE_URL}/matches",
         {
             "sport": "football",
+            "league": "bundesliga",
             "status": "scheduled",
             "limit": API_MATCH_LIMIT,
             "offset": 0
