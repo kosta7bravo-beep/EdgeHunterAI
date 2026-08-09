@@ -261,12 +261,13 @@ def get_matches(limit=50):
     # недавними/старыми матчами или матчами
     # далеко в будущем.
     data = _request(
-        f"{BASE_URL}/matches",
-        {
-            "sport": "football",
-            
-            "limit": API_MATCH_LIMIT
-        }
+    f"{BASE_URL}/matches",
+    {
+        "sport": "football",
+        "limit": API_MATCH_LIMIT,
+        "from": now.isoformat(),
+        "to": max_date.isoformat()
+    }
     )
     print("BBS: RAW MATCHES COUNT =", len(data.get("data", [])))
     matches = data.get(
