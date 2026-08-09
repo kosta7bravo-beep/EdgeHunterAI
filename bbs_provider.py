@@ -8,14 +8,25 @@ BASE_URL = "https://api.bigballsdata.com/v1"
 
 BBS_API_KEY = os.environ.get("BBS_API_KEY", "").strip()
 
-# Матчи обновляем каждые 30 минут
-MATCHES_CACHE_TIME = 1800
+# -------------------------------------------------
+# НАСТРОЙКИ
+# -------------------------------------------------
 
-# Статистика команд живет 6 часов
-TEAM_CACHE_TIME = 21600
+# Как часто обновлять список матчей
+MATCHES_CACHE_TIME = 1800  # 30 минут
 
-# Берем только ближайшие 14 дней
+# Как долго хранить статистику команд
+TEAM_CACHE_TIME = 21600  # 6 часов
+
+# На сколько дней вперед ищем матчи
 MATCHES_DAYS_AHEAD = 14
+
+# Сколько матчей запрашиваем у BBS
+API_MATCH_LIMIT = 200
+
+# -------------------------------------------------
+# CACHE
+# -------------------------------------------------
 
 _cached_matches = None
 _cached_matches_time = 0
@@ -23,7 +34,12 @@ _cached_matches_time = 0
 _team_cache = {}
 
 
+# -------------------------------------------------
+# HEADERS
+# -------------------------------------------------
+
 def _headers():
+
     if not BBS_API_KEY:
         raise Exception(
             "BBS_API_KEY не найден в Environment"
@@ -35,17 +51,23 @@ def _headers():
     }
 
 
+# -------------------------------------------------
+# REQUEST
+# -------------------------------------------------
+
 def _request(url, params=None):
 
     try:
+
         response = requests.get(
             url,
             headers=_headers(),
             params=params or {},
-            timeout=20
+            timeout=30
         )
 
     except Exception as e:
+
         raise Exception(
             "BBS REQUEST ERROR: "
             + repr(e)
@@ -55,7 +77,9 @@ def _request(url, params=None):
 
         try:
             body = response.text[:500]
+
         except Exception:
+
             body = "<response decode error>"
 
         raise Exception(
@@ -63,26 +87,144 @@ def _request(url, params=None):
         )
 
     try:
+
         data = response.json()
 
     except Exception as e:
+
         raise Exception(
             "BBS JSON ERROR: "
             + repr(e)
         )
 
     if not isinstance(data, dict):
+
         raise Exception(
             "BBS: ответ не является JSON-объектом"
         )
 
     if data.get("error"):
+
         raise Exception(
             "BBS API ERROR: "
             + str(data["error"])
         )
 
     return data
+
+
+# -------------------------------------------------
+# ДАТА МАТЧА
+# -------------------------------------------------
+
+def _get_match_datetime(match):
+
+    if not isinstance(match, dict):
+        return None
+
+    date_string = (
+        match.get("kickoff_utc")
+        or match.get("date")
+        or match.get("start_time")
+        or match.get("commence_time")
+    )
+
+    if not date_string:
+        return None
+
+    try:
+
+        value = str(date_string).strip()
+
+        # ISO UTC
+        value = value.replace(
+            "Z",
+            "+00:00"
+        )
+
+        match_date = datetime.fromisoformat(
+            value
+        )
+
+        if match_date.tzinfo is None:
+
+            match_date = match_date.replace(
+                tzinfo=timezone.utc
+            )
+
+        return match_date.astimezone(
+            timezone.utc
+        )
+
+    except Exception:
+
+        return None
+
+
+# -------------------------------------------------
+# НАЗВАНИЕ КОМАНДЫ
+# -------------------------------------------------
+
+def _team_name(value):
+
+    if isinstance(value, dict):
+
+        return (
+            value.get("name")
+            or value.get("short_name")
+            or value.get("abbr")
+            or ""
+        )
+
+    return str(value or "")
+
+
+# -------------------------------------------------
+# НОРМАЛИЗАЦИЯ МАТЧА
+# -------------------------------------------------
+
+def _normalize_match(match):
+
+    if not isinstance(match, dict):
+        return match
+
+    result = dict(match)
+
+    # BBS в разных ответах может отдавать
+    # home/away как строку или объект.
+    result["home"] = _team_name(
+        match.get("home")
+    )
+
+    result["away"] = _team_name(
+        match.get("away")
+    )
+
+    # Если используется другой формат команды
+    if not result["home"]:
+
+        result["home"] = _team_name(
+            match.get("home_team")
+        )
+
+    if not result["away"]:
+
+        result["away"] = _team_name(
+            match.get("away_team")
+        )
+
+    # Приводим дату к единому полю
+    match_date = _get_match_datetime(
+        match
+    )
+
+    if match_date:
+
+        result["kickoff_utc"] = (
+            match_date.isoformat()
+        )
+
+    return result
 
 
 # -------------------------------------------------
@@ -96,30 +238,47 @@ def get_matches(limit=50):
 
     now_timestamp = time.time()
 
+    # CACHE
     if (
         _cached_matches is not None
         and now_timestamp - _cached_matches_time
         < MATCHES_CACHE_TIME
     ):
+
         return _cached_matches
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(
+        timezone.utc
+    )
 
     max_date = now + timedelta(
         days=MATCHES_DAYS_AHEAD
     )
 
+    # ВАЖНО:
+    # Запрашиваем именно scheduled.
+    # Иначе первые записи могут оказаться
+    # недавними/старыми матчами или матчами
+    # далеко в будущем.
     data = _request(
         f"{BASE_URL}/matches",
         {
             "sport": "football",
-            "limit": 50
+            "status": "scheduled",
+            "limit": API_MATCH_LIMIT
         }
     )
 
-    matches = data.get("data", [])
+    matches = data.get(
+        "data",
+        []
+    )
 
-    if not isinstance(matches, list):
+    if not isinstance(
+        matches,
+        list
+    ):
+
         raise Exception(
             "BBS: поле data не является списком"
         )
@@ -128,58 +287,37 @@ def get_matches(limit=50):
 
     for match in matches:
 
-        date_string = (
-            match.get("kickoff_utc")
-            or match.get("date")
-            or match.get("start_time")
-            or match.get("commence_time")
+        match_date = _get_match_datetime(
+            match
         )
 
-        if not date_string:
+        if not match_date:
             continue
 
-        try:
-
-            match_date = datetime.fromisoformat(
-                str(date_string).replace(
-                    "Z",
-                    "+00:00"
-                )
-            )
-
-            if match_date.tzinfo is None:
-                match_date = match_date.replace(
-                    tzinfo=timezone.utc
-                )
-
-            match_date = match_date.astimezone(
-                timezone.utc
-            )
-
-        except Exception:
-            continue
-
-        # Матч уже прошел
+        # Уже прошедшие
         if match_date < now:
             continue
 
-        # Матч слишком далеко в будущем
+        # Слишком далеко вперед
         if match_date > max_date:
             continue
+
+        normalized = _normalize_match(
+            match
+        )
 
         filtered_matches.append(
             (
                 match_date,
-                match
+                normalized
             )
         )
 
-    # Сортируем по времени начала
+    # Ближайшие сначала
     filtered_matches.sort(
         key=lambda item: item[0]
     )
 
-    # Оставляем только ближайшие
     result = [
         item[1]
         for item in filtered_matches[:limit]
@@ -211,7 +349,16 @@ def find_team(team_name):
     )
 
     if cached:
-        return cached.get("team")
+
+        if (
+            time.time()
+            - cached["time"]
+            < TEAM_CACHE_TIME
+        ):
+
+            return cached.get(
+                "team"
+            )
 
     data = _request(
         f"{BASE_URL}/teams",
@@ -227,12 +374,16 @@ def find_team(team_name):
         []
     )
 
-    if not isinstance(teams, list):
+    if not isinstance(
+        teams,
+        list
+    ):
+
         teams = []
 
     team = None
 
-    # Сначала ищем точное совпадение
+    # Точное совпадение
     for item in teams:
 
         name = str(
@@ -243,12 +394,13 @@ def find_team(team_name):
         ).strip().lower()
 
         if name == cache_key:
+
             team = item
             break
 
-    # Если точного совпадения нет,
-    # используем первый результат
+    # Если точного совпадения нет
     if team is None and teams:
+
         team = teams[0]
 
     _team_cache[
@@ -271,7 +423,7 @@ def get_team_form(
 ):
 
     if not team_id:
-        return None
+        return []
 
     cache_key = (
         f"form:{team_id}:{limit}"
@@ -288,6 +440,7 @@ def get_team_form(
             - cached["time"]
             < TEAM_CACHE_TIME
         ):
+
             return cached["data"]
 
     data = _request(
@@ -306,6 +459,7 @@ def get_team_form(
         result,
         list
     ):
+
         result = []
 
     _team_cache[
@@ -342,6 +496,7 @@ def get_team_stats(team_id):
             - cached["time"]
             < TEAM_CACHE_TIME
         ):
+
             return cached["data"]
 
     data = _request(
@@ -363,7 +518,7 @@ def get_team_stats(team_id):
 
 
 # -------------------------------------------------
-# ДАННЫЕ ДВУХ КОМАНД
+# АНАЛИЗ ДВУХ КОМАНД
 # -------------------------------------------------
 
 def get_teams_analysis(
@@ -380,6 +535,7 @@ def get_teams_analysis(
     )
 
     result = {
+
         "home": {
             "name": home_name,
             "team": home_team,
@@ -439,12 +595,13 @@ def get_teams_analysis(
 
 
 # -------------------------------------------------
-# СТАРАЯ ФУНКЦИЯ
+# СТАТИСТИКА КОНКРЕТНОГО МАТЧА
 # -------------------------------------------------
 
 def get_match_stats(match_id):
 
     if not match_id:
+
         raise Exception(
             "BBS: отсутствует ID матча"
         )
