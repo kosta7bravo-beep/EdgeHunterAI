@@ -247,7 +247,7 @@ def get_matches(limit=50):
 
     now_timestamp = time.time()
 
-    # CACHE — один запрос максимум раз в 30 минут
+    # CACHE
     if (
         _cached_matches is not None
         and now_timestamp - _cached_matches_time
@@ -261,8 +261,6 @@ def get_matches(limit=50):
         days=MATCHES_DAYS_AHEAD
     )
 
-    # Пока тестируем только Bundesliga.
-    # BBS coverage показывает именно такой пример запроса.
     data = _request(
         f"{BASE_URL}/matches",
         {
@@ -274,11 +272,25 @@ def get_matches(limit=50):
         }
     )
 
+    # ДИАГНОСТИКА
+    print(
+        "BBS DEBUG:",
+        {
+            "top_keys": list(data.keys()),
+            "data_count": len(data.get("data", []))
+            if isinstance(data.get("data"), list)
+            else "NOT_LIST",
+            "meta": data.get("meta"),
+            "pagination": data.get("pagination"),
+            "total": data.get("total")
+        }
+    )
+
     matches = data.get(
         "data",
         []
     )
-    print("BBS RAW RESPONSE:", data)
+
     if not isinstance(matches, list):
         raise Exception(
             "BBS: поле data не является списком"
