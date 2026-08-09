@@ -278,7 +278,7 @@ def get_matches(limit=50):
         "data",
         []
     )
-
+    print("BBS RAW RESPONSE:", data)
     if not isinstance(matches, list):
         raise Exception(
             "BBS: поле data не является списком"
