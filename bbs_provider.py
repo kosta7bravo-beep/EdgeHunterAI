@@ -264,8 +264,8 @@ def get_matches(limit=50):
     f"{BASE_URL}/matches",
     {
         "sport": "football",
-        "limit": API_MATCH_LIMIT,
-        
+        "page": 1,
+        "limit": API_MATCH_LIMIT
     }
     )
     print("BBS: RAW MATCHES COUNT =", len(data.get("data", [])))
