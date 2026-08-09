@@ -265,8 +265,7 @@ def get_matches(limit=50):
     {
         "sport": "football",
         "limit": API_MATCH_LIMIT,
-        "from": now.isoformat(),
-        "to": max_date.isoformat()
+        
     }
     )
     print("BBS: RAW MATCHES COUNT =", len(data.get("data", [])))
