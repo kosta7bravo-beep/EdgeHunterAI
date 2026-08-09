@@ -7,7 +7,16 @@ from datetime import datetime, timezone, timedelta
 BASE_URL = "https://api.bigballsdata.com/v1"
 
 BBS_API_KEY = os.environ.get("BBS_API_KEY", "").strip()
+def check_bbs_coverage():
 
+    data = _request(
+        f"{BASE_URL}/coverage",
+        {
+            "sport": "football"
+        }
+    )
+
+    return data
 # -------------------------------------------------
 # НАСТРОЙКИ
 # -------------------------------------------------
