@@ -35,12 +35,14 @@ def team_summary(data):
 async def check_football():
 
     try:
-    coverage = check_bbs_coverage()
 
-await send_message(
-    f"📡 <b>BBS COVERAGE</b>\n\n"
-    f"<code>{str(coverage)[:3500]}</code>"
-    )
+        coverage = check_bbs_coverage()
+
+        await send_message(
+            f"📡 <b>BBS COVERAGE</b>\n\n"
+            f"<code>{str(coverage)[:3500]}</code>"
+        )
+
         matches = get_matches(limit=3)
 
         await send_message(
@@ -54,27 +56,34 @@ await send_message(
             away = match.get("away", {})
 
             if isinstance(home, dict):
+
                 home_name = (
                     home.get("name")
                     or home.get("display_name")
                     or ""
                 )
+
             else:
+
                 home_name = str(home)
 
             if isinstance(away, dict):
+
                 away_name = (
                     away.get("name")
                     or away.get("display_name")
                     or ""
                 )
+
             else:
+
                 away_name = str(away)
 
             if not home_name or not away_name:
                 continue
 
             league = match.get("league", "")
+
             kickoff = (
                 match.get("kickoff_utc")
                 or match.get("date")
@@ -88,8 +97,15 @@ await send_message(
                     away_name
                 )
 
-                home_data = analysis.get("home") or {}
-                away_data = analysis.get("away") or {}
+                home_data = (
+                    analysis.get("home")
+                    or {}
+                )
+
+                away_data = (
+                    analysis.get("away")
+                    or {}
+                )
 
                 text = (
                     "🔎 <b>EDGEHUNTER AI — АНАЛИЗ</b>\n\n"
@@ -123,5 +139,5 @@ await send_message(
         await send_message(
             "❌ <b>FOOTBALL ERROR</b>\n\n"
             f"<code>{str(e)[:1000]}</code>"
-                )
+    )
       
