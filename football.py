@@ -2,23 +2,43 @@ from telegram_bot import send_message
 from bbs_provider import get_matches, get_teams_analysis
 
 
+def pct(value):
+    if value is None:
+        return "—"
+
+    try:
+        return f"{float(value) * 100:.0f}%"
+    except Exception:
+        return str(value)
+
+
+def team_summary(data):
+    stats = data.get("stats") or {}
+
+    return (
+        f"📈 Форма: {stats.get('form_string', '—')}\n"
+        f"🏆 Очки: {stats.get('points', '—')}\n"
+        f"⚽ Забито: {stats.get('goals_scored', '—')}\n"
+        f"🥅 Пропущено: {stats.get('goals_conceded', '—')}\n"
+        f"🧤 Сухие матчи: {stats.get('clean_sheets', '—')}\n"
+        f"🎯 BTTS: {pct(stats.get('btts_rate'))}\n"
+        f"🔥 ТБ 2.5: {pct(stats.get('over_2_5_rate'))}\n"
+        f"📊 Средние забитые: "
+        f"{stats.get('avg_goals_scored', '—')}"
+    )
+
+
 async def check_football():
 
     try:
         matches = get_matches(limit=3)
 
         await send_message(
-            f"🧪 <b>BBS TEAM TEST</b>\n\n"
-            f"Матчей получено: {len(matches)}"
+            f"⚽ <b>EDGEHUNTER AI — BBS</b>\n\n"
+            f"Получено матчей: <b>{len(matches)}</b>"
         )
 
-        if not matches:
-            await send_message(
-                "⚠️ BBS не вернул матчи."
-            )
-            return
-
-        for match in matches[:3]:
+        for match in matches:
 
             home = match.get("home", {})
             away = match.get("away", {})
@@ -58,42 +78,24 @@ async def check_football():
                     away_name
                 )
 
-                home_data = analysis["home"]
-                away_data = analysis["away"]
-
-                home_team = home_data.get("team")
-                away_team = away_data.get("team")
-
-                home_id = (
-                    home_team.get("id")
-                    if home_team
-                    else None
-                )
-
-                away_id = (
-                    away_team.get("id")
-                    if away_team
-                    else None
-                )
+                home_data = analysis.get("home") or {}
+                away_data = analysis.get("away") or {}
 
                 text = (
-                    "⚽ <b>BBS TEAM ANALYSIS</b>\n\n"
+                    "🔎 <b>EDGEHUNTER AI — АНАЛИЗ</b>\n\n"
                     f"🏆 {league}\n"
                     f"⚽ <b>{home_name}</b> — "
                     f"<b>{away_name}</b>\n"
                     f"📅 {kickoff}\n\n"
-                    f"🏠 {home_name}\n"
-                    f"🆔 {home_id}\n"
-                    f"📈 Form: "
-                    f"{str(home_data.get('form', []))[:700]}\n"
-                    f"📊 Stats: "
-                    f"{str(home_data.get('stats'))[:1000]}\n\n"
-                    f"✈️ {away_name}\n"
-                    f"🆔 {away_id}\n"
-                    f"📈 Form: "
-                    f"{str(away_data.get('form', []))[:700]}\n"
-                    f"📊 Stats: "
-                    f"{str(away_data.get('stats'))[:1000]}"
+
+                    f"🏠 <b>{home_name}</b>\n"
+                    f"{team_summary(home_data)}\n\n"
+
+                    f"✈️ <b>{away_name}</b>\n"
+                    f"{team_summary(away_data)}\n\n"
+
+                    "🧠 <b>Пока только статистический анализ.</b>\n"
+                    "Коэффициент и Value подключим следующим этапом."
                 )
 
                 await send_message(text)
@@ -101,7 +103,7 @@ async def check_football():
             except Exception as e:
 
                 await send_message(
-                    "⚠️ <b>BBS TEAM ERROR</b>\n\n"
+                    "⚠️ <b>BBS ANALYSIS ERROR</b>\n\n"
                     f"⚽ {home_name} — {away_name}\n\n"
                     f"<code>{str(e)[:1000]}</code>"
                 )
@@ -109,7 +111,7 @@ async def check_football():
     except Exception as e:
 
         await send_message(
-            "❌ <b>BBS TEST ERROR</b>\n\n"
+            "❌ <b>FOOTBALL ERROR</b>\n\n"
             f"<code>{str(e)[:1000]}</code>"
-                            )
+                )
       
