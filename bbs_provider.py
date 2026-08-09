@@ -7,10 +7,16 @@ BASE_URL = "https://api.bigballsdata.com/v1"
 
 BBS_API_KEY = os.environ.get("BBS_API_KEY", "").strip()
 
-CACHE_TIME = 1800
+# Матчи обновляем каждые 30 минут
+MATCHES_CACHE_TIME = 1800
+
+# Статистика команд живет намного дольше
+TEAM_CACHE_TIME = 21600  # 6 часов
 
 _cached_matches = None
-_cached_time = 0
+_cached_matches_time = 0
+
+_team_cache = {}
 
 
 def _headers():
@@ -28,7 +34,6 @@ def _headers():
 def _request(url, params=None):
 
     try:
-
         response = requests.get(
             url,
             headers=_headers(),
@@ -37,7 +42,6 @@ def _request(url, params=None):
         )
 
     except Exception as e:
-
         raise Exception(
             "BBS REQUEST ERROR: "
             + repr(e)
@@ -58,20 +62,17 @@ def _request(url, params=None):
         data = response.json()
 
     except Exception as e:
-
         raise Exception(
             "BBS JSON ERROR: "
             + repr(e)
         )
 
     if not isinstance(data, dict):
-
         raise Exception(
             "BBS: ответ не является JSON-объектом"
         )
 
     if data.get("error"):
-
         raise Exception(
             "BBS API ERROR: "
             + str(data["error"])
@@ -80,16 +81,20 @@ def _request(url, params=None):
     return data
 
 
+# -------------------------------------------------
+# МАТЧИ
+# -------------------------------------------------
+
 def get_matches(limit=3):
 
     global _cached_matches
-    global _cached_time
+    global _cached_matches_time
 
     now = time.time()
 
     if (
         _cached_matches is not None
-        and now - _cached_time < CACHE_TIME
+        and now - _cached_matches_time < MATCHES_CACHE_TIME
     ):
         return _cached_matches
 
@@ -104,16 +109,201 @@ def get_matches(limit=3):
     matches = data.get("data", [])
 
     if not isinstance(matches, list):
-
         raise Exception(
             "BBS: поле data не является списком"
         )
 
     _cached_matches = matches
-    _cached_time = now
+    _cached_matches_time = now
 
     return matches
 
+
+# -------------------------------------------------
+# ПОИСК КОМАНДЫ
+# -------------------------------------------------
+
+def find_team(team_name):
+
+    if not team_name:
+        return None
+
+    clean_name = str(team_name).strip()
+
+    cache_key = clean_name.lower()
+
+    cached = _team_cache.get(
+        f"team:{cache_key}"
+    )
+
+    if cached:
+        return cached.get("team")
+
+    data = _request(
+        f"{BASE_URL}/teams",
+        {
+            "sport": "football",
+            "name": clean_name,
+            "limit": 10
+        }
+    )
+
+    teams = data.get("data", [])
+
+    if not isinstance(teams, list):
+        teams = []
+
+    team = None
+
+    # Сначала ищем точное совпадение
+    for item in teams:
+
+        name = str(
+            item.get("name", "")
+        ).strip().lower()
+
+        if name == cache_key:
+            team = item
+            break
+
+    # Если точного нет — берем первый результат
+    if team is None and teams:
+        team = teams[0]
+
+    _team_cache[
+        f"team:{cache_key}"
+    ] = {
+        "time": time.time(),
+        "team": team
+    }
+
+    return team
+
+
+# -------------------------------------------------
+# ФОРМА КОМАНДЫ
+# -------------------------------------------------
+
+def get_team_form(team_id, limit=10):
+
+    if not team_id:
+        return None
+
+    cache_key = f"form:{team_id}:{limit}"
+
+    cached = _team_cache.get(cache_key)
+
+    if cached:
+        if time.time() - cached["time"] < TEAM_CACHE_TIME:
+            return cached["data"]
+
+    data = _request(
+        f"{BASE_URL}/teams/{team_id}/form",
+        {
+            "limit": limit
+        }
+    )
+
+    result = data.get("data", [])
+
+    if not isinstance(result, list):
+        result = []
+
+    _team_cache[cache_key] = {
+        "time": time.time(),
+        "data": result
+    }
+
+    return result
+
+
+# -------------------------------------------------
+# СТАТИСТИКА КОМАНДЫ
+# -------------------------------------------------
+
+def get_team_stats(team_id):
+
+    if not team_id:
+        return None
+
+    cache_key = f"stats:{team_id}"
+
+    cached = _team_cache.get(cache_key)
+
+    if cached:
+        if time.time() - cached["time"] < TEAM_CACHE_TIME:
+            return cached["data"]
+
+    data = _request(
+        f"{BASE_URL}/teams/{team_id}/stats"
+    )
+
+    result = data.get("data")
+
+    _team_cache[cache_key] = {
+        "time": time.time(),
+        "data": result
+    }
+
+    return result
+
+
+# -------------------------------------------------
+# ПОЛУЧИТЬ ДАННЫЕ ДВУХ КОМАНД
+# -------------------------------------------------
+
+def get_teams_analysis(home_name, away_name):
+
+    home_team = find_team(home_name)
+    away_team = find_team(away_name)
+
+    result = {
+        "home": {
+            "name": home_name,
+            "team": home_team,
+            "form": [],
+            "stats": None
+        },
+        "away": {
+            "name": away_name,
+            "team": away_team,
+            "form": [],
+            "stats": None
+        }
+    }
+
+    # Хозяева
+    if home_team and home_team.get("id"):
+
+        team_id = home_team["id"]
+
+        result["home"]["form"] = get_team_form(
+            team_id
+        )
+
+        result["home"]["stats"] = get_team_stats(
+            team_id
+        )
+
+    # Гости
+    if away_team and away_team.get("id"):
+
+        team_id = away_team["id"]
+
+        result["away"]["form"] = get_team_form(
+            team_id
+        )
+
+        result["away"]["stats"] = get_team_stats(
+            team_id
+        )
+
+    return result
+
+
+# -------------------------------------------------
+# СТАРАЯ ФУНКЦИЯ ОСТАЕТСЯ
+# -------------------------------------------------
 
 def get_match_stats(match_id):
 
