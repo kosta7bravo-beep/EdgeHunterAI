@@ -11,9 +11,28 @@ ODDS_API_KEY = os.environ.get(
 ).strip()
 
 
+# -------------------------------------------------
+# ПРОВЕРКА КЛЮЧА
+# -------------------------------------------------
+
+print(
+    "ODDS KEY CHECK:",
+    bool(ODDS_API_KEY),
+    "length=",
+    len(ODDS_API_KEY),
+    "prefix=",
+    ODDS_API_KEY[:4] + "..." if ODDS_API_KEY else "EMPTY"
+)
+
+
+# -------------------------------------------------
+# ПОЛУЧЕНИЕ МАТЧЕЙ И КОЭФФИЦИЕНТОВ
+# -------------------------------------------------
+
 def get_odds_matches():
 
     if not ODDS_API_KEY:
+
         raise Exception(
             "ODDS_API_KEY не найден в Environment"
         )
@@ -37,11 +56,26 @@ def get_odds_matches():
             f"{response.text[:500]}"
         )
 
-    data = response.json()
+    try:
+
+        data = response.json()
+
+    except Exception as e:
+
+        raise Exception(
+            "ODDS API JSON ERROR: "
+            + repr(e)
+        )
 
     if not isinstance(data, list):
+
         raise Exception(
             "ODDS API: неожиданный формат ответа"
         )
+
+    print(
+        "ODDS API MATCHES:",
+        len(data)
+    )
 
     return data
