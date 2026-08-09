@@ -252,31 +252,44 @@ def get_matches(limit=50):
         days=MATCHES_DAYS_AHEAD
     )
 
-    # Получаем именно будущие запланированные матчи.
-    # ВАЖНО: BBS использует offset, а не page.
-    data = _request(
-        f"{BASE_URL}/matches",
-        {
-            "sport": "football",
-            "status": "scheduled",
-            "limit": API_MATCH_LIMIT,
-            "offset": 0
-        }
-    )
+    all_matches = []
 
-    matches = data.get(
-        "data",
-        []
-    )
+    # Запрашиваем расписание по каждому дню.
+    # BBS /stored/matches официально поддерживает
+    # date=YYYY-MM-DD и status=scheduled.
+    current_date = now.date()
+    end_date = max_date.date()
 
-    if not isinstance(matches, list):
-        raise Exception(
-            "BBS: поле data не является списком"
+    while current_date <= end_date:
+
+        data = _request(
+            f"{BASE_URL}/stored/matches",
+            {
+                "sport": "football",
+                "status": "scheduled",
+                "date": current_date.isoformat(),
+                "limit": 200
+            }
+        )
+
+        matches = data.get(
+            "data",
+            []
+        )
+
+        if isinstance(matches, list):
+
+            all_matches.extend(
+                matches
+            )
+
+        current_date += timedelta(
+            days=1
         )
 
     filtered_matches = []
 
-    for match in matches:
+    for match in all_matches:
 
         match_date = _get_match_datetime(
             match
@@ -285,11 +298,9 @@ def get_matches(limit=50):
         if not match_date:
             continue
 
-        # Уже прошедшие
         if match_date < now:
             continue
 
-        # Слишком далеко вперед
         if match_date > max_date:
             continue
 
@@ -309,9 +320,31 @@ def get_matches(limit=50):
         key=lambda item: item[0]
     )
 
+    # Убираем возможные дубликаты
+    unique_matches = []
+    seen_ids = set()
+
+    for match_date, match in filtered_matches:
+
+        match_id = match.get("id")
+
+        if match_id:
+
+            if match_id in seen_ids:
+                continue
+
+            seen_ids.add(match_id)
+
+        unique_matches.append(
+            (
+                match_date,
+                match
+            )
+        )
+
     result = [
         item[1]
-        for item in filtered_matches[:limit]
+        for item in unique_matches[:limit]
     ]
 
     _cached_matches = result
