@@ -1,143 +1,270 @@
+from datetime import datetime, timezone
+
 from telegram_bot import send_message
-from bbs_provider import (
-    get_matches,
-    get_teams_analysis,
-    check_bbs_coverage
-)
+from odds_provider import get_odds_matches
 
 
-def pct(value):
-    if value is None:
+MIN_VALUE = 5
+MIN_ODDS = 1.50
+MAX_ODDS = 5.00
+
+
+def fair_odds(probability):
+
+    if probability <= 0:
+        return None
+
+    return 1 / probability
+
+
+def calculate_value(probability, odds):
+
+    return (
+        probability * odds - 1
+    ) * 100
+
+
+def parse_probability_from_odds(odds):
+
+    if not odds or odds <= 0:
+        return 0
+
+    return 1 / odds
+
+
+def format_date(value):
+
+    if not value:
         return "—"
 
     try:
-        return f"{float(value) * 100:.0f}%"
+
+        dt = datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        )
+
+        return dt.astimezone(
+            timezone.utc
+        ).strftime(
+            "%d.%m.%Y %H:%M UTC"
+        )
+
     except Exception:
+
         return str(value)
 
 
-def team_summary(data):
-    stats = data.get("stats") or {}
+def extract_h2h(bookmakers):
 
-    return (
-        f"📈 Форма: {stats.get('form_string', '—')}\n"
-        f"🏆 Очки: {stats.get('points', '—')}\n"
-        f"⚽ Забито: {stats.get('goals_scored', '—')}\n"
-        f"🥅 Пропущено: {stats.get('goals_conceded', '—')}\n"
-        f"🧤 Сухие матчи: {stats.get('clean_sheets', '—')}\n"
-        f"🎯 BTTS: {pct(stats.get('btts_rate'))}\n"
-        f"🔥 ТБ 2.5: {pct(stats.get('over_2_5_rate'))}\n"
-        f"📊 Средние забитые: "
-        f"{stats.get('avg_goals_scored', '—')}"
-    )
+    results = []
+
+    for bookmaker in bookmakers or []:
+
+        markets = bookmaker.get(
+            "markets",
+            []
+        )
+
+        for market in markets:
+
+            if market.get("key") != "h2h":
+                continue
+
+            outcomes = market.get(
+                "outcomes",
+                []
+            )
+
+            for outcome in outcomes:
+
+                name = outcome.get("name")
+                price = outcome.get("price")
+
+                if not name or not price:
+                    continue
+
+                results.append(
+                    {
+                        "name": name,
+                        "odds": float(price),
+                        "bookmaker": bookmaker.get(
+                            "title",
+                            "—"
+                        )
+                    }
+                )
+
+    return results
+
+
+def extract_totals(bookmakers):
+
+    results = []
+
+    for bookmaker in bookmakers or []:
+
+        markets = bookmaker.get(
+            "markets",
+            []
+        )
+
+        for market in markets:
+
+            if market.get("key") != "totals":
+                continue
+
+            outcomes = market.get(
+                "outcomes",
+                []
+            )
+
+            for outcome in outcomes:
+
+                name = outcome.get("name")
+                point = outcome.get("point")
+                price = outcome.get("price")
+
+                if (
+                    not name
+                    or point is None
+                    or not price
+                ):
+                    continue
+
+                results.append(
+                    {
+                        "name": name,
+                        "point": float(point),
+                        "odds": float(price),
+                        "bookmaker": bookmaker.get(
+                            "title",
+                            "—"
+                        )
+                    }
+                )
+
+    return results
 
 
 async def check_football():
 
     try:
 
-        coverage = check_bbs_coverage()
+        matches = get_odds_matches()
 
         await send_message(
-            f"📡 <b>BBS COVERAGE</b>\n\n"
-            f"<code>{str(coverage)[:3500]}</code>"
+            "⚽ <b>EDGEHUNTER AI</b>\n\n"
+            f"Получено матчей с коэффициентами: "
+            f"<b>{len(matches)}</b>"
         )
 
-        matches = get_matches(limit=3)
-
-        await send_message(
-            f"⚽ <b>EDGEHUNTER AI — BBS</b>\n\n"
-            f"Получено матчей: <b>{len(matches)}</b>"
-        )
+        # Берём только ближайшие 3 матча
+        matches = sorted(
+            matches,
+            key=lambda x: x.get(
+                "commence_time",
+                ""
+            )
+        )[:3]
 
         for match in matches:
 
-            home = match.get("home", {})
-            away = match.get("away", {})
-
-            if isinstance(home, dict):
-
-                home_name = (
-                    home.get("name")
-                    or home.get("display_name")
-                    or ""
-                )
-
-            else:
-
-                home_name = str(home)
-
-            if isinstance(away, dict):
-
-                away_name = (
-                    away.get("name")
-                    or away.get("display_name")
-                    or ""
-                )
-
-            else:
-
-                away_name = str(away)
-
-            if not home_name or not away_name:
-                continue
-
-            league = match.get("league", "")
-
-            kickoff = (
-                match.get("kickoff_utc")
-                or match.get("date")
-                or ""
+            home = match.get(
+                "home_team",
+                "—"
             )
 
-            try:
+            away = match.get(
+                "away_team",
+                "—"
+            )
 
-                analysis = get_teams_analysis(
-                    home_name,
-                    away_name
+            kickoff = format_date(
+                match.get(
+                    "commence_time"
+                )
+            )
+
+            bookmakers = match.get(
+                "bookmakers",
+                []
+            )
+
+            h2h = extract_h2h(
+                bookmakers
+            )
+
+            totals = extract_totals(
+                bookmakers
+            )
+
+            text = (
+                "🔎 <b>EDGEHUNTER AI</b>\n\n"
+                f"⚽ <b>{home}</b> — "
+                f"<b>{away}</b>\n"
+                f"📅 {kickoff}\n\n"
+            )
+
+            if h2h:
+
+                text += (
+                    "🏆 <b>1X2</b>\n"
                 )
 
-                home_data = (
-                    analysis.get("home")
-                    or {}
+                for item in h2h[:6]:
+
+                    odds = item["odds"]
+
+                    if (
+                        MIN_ODDS
+                        <= odds
+                        <= MAX_ODDS
+                    ):
+
+                        text += (
+                            f"{item['name']}: "
+                            f"<b>{odds:.2f}</b>\n"
+                        )
+
+                text += "\n"
+
+            if totals:
+
+                text += (
+                    "🔥 <b>ТОТАЛЫ</b>\n"
                 )
 
-                away_data = (
-                    analysis.get("away")
-                    or {}
-                )
+                for item in totals[:6]:
 
-                text = (
-                    "🔎 <b>EDGEHUNTER AI — АНАЛИЗ</b>\n\n"
-                    f"🏆 {league}\n"
-                    f"⚽ <b>{home_name}</b> — "
-                    f"<b>{away_name}</b>\n"
-                    f"📅 {kickoff}\n\n"
+                    odds = item["odds"]
 
-                    f"🏠 <b>{home_name}</b>\n"
-                    f"{team_summary(home_data)}\n\n"
+                    if (
+                        MIN_ODDS
+                        <= odds
+                        <= MAX_ODDS
+                    ):
 
-                    f"✈️ <b>{away_name}</b>\n"
-                    f"{team_summary(away_data)}\n\n"
+                        text += (
+                            f"{item['name']} "
+                            f"{item['point']:.1f}: "
+                            f"<b>{odds:.2f}</b>\n"
+                        )
 
-                    "🧠 <b>Пока только статистический анализ.</b>\n"
-                    "Коэффициент и Value подключим следующим этапом."
-                )
+                text += "\n"
 
-                await send_message(text)
+            text += (
+                "🧠 <b>Пока тестируем получение "
+                "коэффициентов.</b>"
+            )
 
-            except Exception as e:
-
-                await send_message(
-                    "⚠️ <b>BBS ANALYSIS ERROR</b>\n\n"
-                    f"⚽ {home_name} — {away_name}\n\n"
-                    f"<code>{str(e)[:1000]}</code>"
-                )
+            await send_message(
+                text
+            )
 
     except Exception as e:
 
         await send_message(
-            "❌ <b>FOOTBALL ERROR</b>\n\n"
-            f"<code>{str(e)[:1000]}</code>"
+            "❌ <b>ODDS API ERROR</b>\n\n"
+            f"<code>{str(e)[:1500]}</code>"
     )
       
