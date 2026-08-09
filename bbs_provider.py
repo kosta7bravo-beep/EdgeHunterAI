@@ -247,7 +247,6 @@ def get_matches(limit=50):
 
     now_timestamp = time.time()
 
-    # CACHE
     if (
         _cached_matches is not None
         and now_timestamp - _cached_matches_time
@@ -267,22 +266,8 @@ def get_matches(limit=50):
             "sport": "football",
             "league": "bundesliga",
             "status": "scheduled",
-            "limit": API_MATCH_LIMIT,
-            "offset": 0
-        }
-    )
-
-    # ДИАГНОСТИКА
-    print(
-        "BBS DEBUG:",
-        {
-            "top_keys": list(data.keys()),
-            "data_count": len(data.get("data", []))
-            if isinstance(data.get("data"), list)
-            else "NOT_LIST",
-            "meta": data.get("meta"),
-            "pagination": data.get("pagination"),
-            "total": data.get("total")
+            "page": 1,
+            "limit": API_MATCH_LIMIT
         }
     )
 
