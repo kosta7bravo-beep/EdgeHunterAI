@@ -1,5 +1,9 @@
 from telegram_bot import send_message
-from bbs_provider import get_matches, get_teams_analysis
+from bbs_provider import (
+    get_matches,
+    get_teams_analysis,
+    check_bbs_coverage
+)
 
 
 def pct(value):
