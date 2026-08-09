@@ -10,7 +10,7 @@ def home():
     return "EdgeHunterAI is running"
 
 def run_web():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=False, use_reloader=False)
 
 threading.Thread(target=run_web, daemon=True).start()print("🚀 MAIN: web server started")
 from football import check_football
