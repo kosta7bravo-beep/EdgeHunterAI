@@ -34,12 +34,13 @@ def team_summary(data):
 
 async def check_football():
 
-    try:coverage = check_bbs_coverage()
+    try:
+    coverage = check_bbs_coverage()
 
 await send_message(
     f"📡 <b>BBS COVERAGE</b>\n\n"
     f"<code>{str(coverage)[:3500]}</code>"
-)
+    )
         matches = get_matches(limit=3)
 
         await send_message(
