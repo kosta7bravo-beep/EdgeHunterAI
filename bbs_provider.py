@@ -89,7 +89,7 @@ def _request(url, params=None):
 # ПОЛУЧЕНИЕ БЛИЖАЙШИХ МАТЧЕЙ
 # -------------------------------------------------
 
-def get_matches(limit=3):
+def get_matches(limit=50):
 
     global _cached_matches
     global _cached_matches_time
