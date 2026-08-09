@@ -244,41 +244,32 @@ def get_matches(limit=50):
         and now_timestamp - _cached_matches_time
         < MATCHES_CACHE_TIME
     ):
-
         return _cached_matches
 
-    now = datetime.now(
-        timezone.utc
-    )
+    now = datetime.now(timezone.utc)
 
     max_date = now + timedelta(
         days=MATCHES_DAYS_AHEAD
     )
 
-    # ВАЖНО:
-    # Запрашиваем именно scheduled.
-    # Иначе первые записи могут оказаться
-    # недавними/старыми матчами или матчами
-    # далеко в будущем.
+    # Получаем именно будущие запланированные матчи.
+    # ВАЖНО: BBS использует offset, а не page.
     data = _request(
-    f"{BASE_URL}/matches",
-    {
-        "sport": "football",
-        "page": 1,
-        "limit": API_MATCH_LIMIT
-    }
+        f"{BASE_URL}/matches",
+        {
+            "sport": "football",
+            "status": "scheduled",
+            "limit": API_MATCH_LIMIT,
+            "offset": 0
+        }
     )
-    print("BBS: RAW MATCHES COUNT =", len(data.get("data", [])))
+
     matches = data.get(
         "data",
         []
     )
 
-    if not isinstance(
-        matches,
-        list
-    ):
-
+    if not isinstance(matches, list):
         raise Exception(
             "BBS: поле data не является списком"
         )
@@ -313,7 +304,7 @@ def get_matches(limit=50):
             )
         )
 
-    # Ближайшие сначала
+    # Ближайшие матчи сначала
     filtered_matches.sort(
         key=lambda item: item[0]
     )
