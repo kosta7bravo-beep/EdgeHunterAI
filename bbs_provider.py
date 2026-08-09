@@ -247,6 +247,7 @@ def get_matches(limit=50):
 
     now_timestamp = time.time()
 
+    # CACHE — не спрашиваем BBS повторно в течение 30 минут
     if (
         _cached_matches is not None
         and now_timestamp - _cached_matches_time
@@ -254,60 +255,210 @@ def get_matches(limit=50):
     ):
         return _cached_matches
 
-    test_date = "2026-08-28"
+    now = datetime.now(timezone.utc)
 
-    data = _request(
-        f"{BASE_URL}/stored/matches",
-        {
-            "sport": "football",
-            "league": "bundesliga",
-            "date": test_date,
-            "status": "scheduled",
-            "limit": API_MATCH_LIMIT
-        }
+    # -------------------------------------------------
+    # Узнаём ближайшее событие из coverage
+    # -------------------------------------------------
+
+    coverage = check_bbs_coverage()
+
+    next_event = (
+        coverage
+        .get("data", {})
+        .get("sports", [])
     )
 
-    matches = data.get(
-        "data",
-        []
-    )
+    start_date = None
 
-    if not isinstance(matches, list):
-        raise Exception(
-            "BBS: поле data не является списком"
-        )
+    for sport in next_event:
 
-    filtered_matches = []
-
-    for match in matches:
-
-        match_date = _get_match_datetime(match)
-
-        if not match_date:
+        if sport.get("slug") != "football":
             continue
 
-        normalized = _normalize_match(match)
+        for league in sport.get("leagues", []):
 
-        filtered_matches.append(
-            (
-                match_date,
-                normalized
+            if league.get("key") != "bundesliga":
+                continue
+
+            next_event_date = (
+                league
+                .get("freshness", {})
+                .get("next_event")
             )
+
+            if next_event_date:
+
+                try:
+
+                    start_date = datetime.fromisoformat(
+                        next_event_date.replace(
+                            "Z",
+                            "+00:00"
+                        )
+                    ).date()
+
+                except Exception:
+
+                    start_date = None
+
+            break
+
+        break
+
+    # Если coverage не дал дату,
+    # начинаем с сегодняшнего дня
+    if start_date is None:
+
+        start_date = now.date()
+
+    # -------------------------------------------------
+    # Ищем ближайшие матчи
+    # -------------------------------------------------
+
+    found_matches = []
+
+    max_days = MATCHES_DAYS_AHEAD
+
+    for day_offset in range(max_days):
+
+        current_date = (
+            start_date
+            + timedelta(days=day_offset)
         )
 
-    filtered_matches.sort(
+        # Не уходим слишком далеко назад
+        if current_date < now.date():
+            continue
+
+        date_string = current_date.isoformat()
+
+        try:
+
+            data = _request(
+                f"{BASE_URL}/stored/matches",
+                {
+                    "sport": "football",
+                    "league": "bundesliga",
+                    "date": date_string,
+                    "status": "scheduled",
+                    "limit": API_MATCH_LIMIT
+                }
+            )
+
+        except Exception as e:
+
+            error_text = str(e)
+
+            # Если получили 429 —
+            # прекращаем поиск, чтобы не добить лимит
+            if "429" in error_text:
+
+                print(
+                    "BBS RATE LIMIT:",
+                    error_text
+                )
+
+                break
+
+            continue
+
+        matches = data.get(
+            "data",
+            []
+        )
+
+        if not isinstance(matches, list):
+            matches = []
+
+        for match in matches:
+
+            match_date = _get_match_datetime(
+                match
+            )
+
+            if not match_date:
+                continue
+
+            if match_date < now:
+                continue
+
+            normalized = _normalize_match(
+                match
+            )
+
+            found_matches.append(
+                (
+                    match_date,
+                    normalized
+                )
+            )
+
+        # -------------------------------------------------
+        # Если уже нашли достаточно матчей —
+        # прекращаем запросы
+        # -------------------------------------------------
+
+        if len(found_matches) >= limit:
+
+            break
+
+        # Защита от лимита BBS:
+        # максимум 1 запрос примерно в секунду
+        time.sleep(1)
+
+    # -------------------------------------------------
+    # Сортируем по времени
+    # -------------------------------------------------
+
+    found_matches.sort(
         key=lambda item: item[0]
     )
 
-    result = [
-        item[1]
-        for item in filtered_matches[:limit]
-    ]
+    # Убираем возможные дубликаты
+    unique_matches = []
 
-    _cached_matches = result
+    seen = set()
+
+    for match_date, match in found_matches:
+
+        match_id = (
+            match.get("id")
+            or match.get("match_id")
+        )
+
+        if match_id:
+
+            key = str(match_id)
+
+        else:
+
+            key = (
+                str(match.get("home"))
+                + "|"
+                + str(match.get("away"))
+                + "|"
+                + match_date.isoformat()
+            )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        unique_matches.append(match)
+
+        if len(unique_matches) >= limit:
+            break
+
+    # -------------------------------------------------
+    # CACHE
+    # -------------------------------------------------
+
+    _cached_matches = unique_matches
     _cached_matches_time = now_timestamp
 
-    return result
+    return unique_matches
 
 # -------------------------------------------------
 # ПОИСК КОМАНДЫ
