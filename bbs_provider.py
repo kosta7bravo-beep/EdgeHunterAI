@@ -264,7 +264,7 @@ def get_matches(limit=50):
         f"{BASE_URL}/matches",
         {
             "sport": "football",
-            "status": "scheduled",
+            
             "limit": API_MATCH_LIMIT
         }
     )
