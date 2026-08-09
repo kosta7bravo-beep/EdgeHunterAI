@@ -268,7 +268,7 @@ def get_matches(limit=50):
             "limit": API_MATCH_LIMIT
         }
     )
-
+    print("BBS: RAW MATCHES COUNT =", len(data.get("data", [])))
     matches = data.get(
         "data",
         []
