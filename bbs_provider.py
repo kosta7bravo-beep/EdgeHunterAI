@@ -19,7 +19,7 @@ MATCHES_CACHE_TIME = 1800  # 30 минут
 TEAM_CACHE_TIME = 21600  # 6 часов
 
 # На сколько дней вперед ищем матчи
-MATCHES_DAYS_AHEAD = 14
+MATCHES_DAYS_AHEAD = 1000
 
 # Сколько матчей запрашиваем у BBS
 API_MATCH_LIMIT = 200
