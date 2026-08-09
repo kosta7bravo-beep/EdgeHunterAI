@@ -254,19 +254,15 @@ def get_matches(limit=50):
     ):
         return _cached_matches
 
-    now = datetime.now(timezone.utc)
-
-    max_date = now + timedelta(
-        days=MATCHES_DAYS_AHEAD
-    )
+    test_date = "2026-08-28"
 
     data = _request(
-        f"{BASE_URL}/matches",
+        f"{BASE_URL}/stored/matches",
         {
             "sport": "football",
             "league": "bundesliga",
+            "date": test_date,
             "status": "scheduled",
-            "page": 1,
             "limit": API_MATCH_LIMIT
         }
     )
@@ -285,22 +281,12 @@ def get_matches(limit=50):
 
     for match in matches:
 
-        match_date = _get_match_datetime(
-            match
-        )
+        match_date = _get_match_datetime(match)
 
         if not match_date:
             continue
 
-        if match_date < now:
-            continue
-
-        if match_date > max_date:
-            continue
-
-        normalized = _normalize_match(
-            match
-        )
+        normalized = _normalize_match(match)
 
         filtered_matches.append(
             (
