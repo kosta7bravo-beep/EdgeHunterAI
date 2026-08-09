@@ -1,6 +1,7 @@
 import os
 import time
 import requests
+from datetime import datetime, timezone, timedelta
 
 
 BASE_URL = "https://api.bigballsdata.com/v1"
@@ -10,8 +11,11 @@ BBS_API_KEY = os.environ.get("BBS_API_KEY", "").strip()
 # Матчи обновляем каждые 30 минут
 MATCHES_CACHE_TIME = 1800
 
-# Статистика команд живет намного дольше
-TEAM_CACHE_TIME = 21600  # 6 часов
+# Статистика команд живет 6 часов
+TEAM_CACHE_TIME = 21600
+
+# Берем только ближайшие 14 дней
+MATCHES_DAYS_AHEAD = 14
 
 _cached_matches = None
 _cached_matches_time = 0
@@ -82,7 +86,7 @@ def _request(url, params=None):
 
 
 # -------------------------------------------------
-# МАТЧИ
+# ПОЛУЧЕНИЕ БЛИЖАЙШИХ МАТЧЕЙ
 # -------------------------------------------------
 
 def get_matches(limit=3):
@@ -90,19 +94,26 @@ def get_matches(limit=3):
     global _cached_matches
     global _cached_matches_time
 
-    now = time.time()
+    now_timestamp = time.time()
 
     if (
         _cached_matches is not None
-        and now - _cached_matches_time < MATCHES_CACHE_TIME
+        and now_timestamp - _cached_matches_time
+        < MATCHES_CACHE_TIME
     ):
         return _cached_matches
+
+    now = datetime.now(timezone.utc)
+
+    max_date = now + timedelta(
+        days=MATCHES_DAYS_AHEAD
+    )
 
     data = _request(
         f"{BASE_URL}/matches",
         {
             "sport": "football",
-            "limit": limit
+            "limit": 50
         }
     )
 
@@ -113,10 +124,71 @@ def get_matches(limit=3):
             "BBS: поле data не является списком"
         )
 
-    _cached_matches = matches
-    _cached_matches_time = now
+    filtered_matches = []
 
-    return matches
+    for match in matches:
+
+        date_string = (
+            match.get("kickoff_utc")
+            or match.get("date")
+            or match.get("start_time")
+            or match.get("commence_time")
+        )
+
+        if not date_string:
+            continue
+
+        try:
+
+            match_date = datetime.fromisoformat(
+                str(date_string).replace(
+                    "Z",
+                    "+00:00"
+                )
+            )
+
+            if match_date.tzinfo is None:
+                match_date = match_date.replace(
+                    tzinfo=timezone.utc
+                )
+
+            match_date = match_date.astimezone(
+                timezone.utc
+            )
+
+        except Exception:
+            continue
+
+        # Матч уже прошел
+        if match_date < now:
+            continue
+
+        # Матч слишком далеко в будущем
+        if match_date > max_date:
+            continue
+
+        filtered_matches.append(
+            (
+                match_date,
+                match
+            )
+        )
+
+    # Сортируем по времени начала
+    filtered_matches.sort(
+        key=lambda item: item[0]
+    )
+
+    # Оставляем только ближайшие
+    result = [
+        item[1]
+        for item in filtered_matches[:limit]
+    ]
+
+    _cached_matches = result
+    _cached_matches_time = now_timestamp
+
+    return result
 
 
 # -------------------------------------------------
@@ -128,7 +200,9 @@ def find_team(team_name):
     if not team_name:
         return None
 
-    clean_name = str(team_name).strip()
+    clean_name = str(
+        team_name
+    ).strip()
 
     cache_key = clean_name.lower()
 
@@ -148,7 +222,10 @@ def find_team(team_name):
         }
     )
 
-    teams = data.get("data", [])
+    teams = data.get(
+        "data",
+        []
+    )
 
     if not isinstance(teams, list):
         teams = []
@@ -159,14 +236,18 @@ def find_team(team_name):
     for item in teams:
 
         name = str(
-            item.get("name", "")
+            item.get(
+                "name",
+                ""
+            )
         ).strip().lower()
 
         if name == cache_key:
             team = item
             break
 
-    # Если точного нет — берем первый результат
+    # Если точного совпадения нет,
+    # используем первый результат
     if team is None and teams:
         team = teams[0]
 
@@ -184,17 +265,29 @@ def find_team(team_name):
 # ФОРМА КОМАНДЫ
 # -------------------------------------------------
 
-def get_team_form(team_id, limit=10):
+def get_team_form(
+    team_id,
+    limit=10
+):
 
     if not team_id:
         return None
 
-    cache_key = f"form:{team_id}:{limit}"
+    cache_key = (
+        f"form:{team_id}:{limit}"
+    )
 
-    cached = _team_cache.get(cache_key)
+    cached = _team_cache.get(
+        cache_key
+    )
 
     if cached:
-        if time.time() - cached["time"] < TEAM_CACHE_TIME:
+
+        if (
+            time.time()
+            - cached["time"]
+            < TEAM_CACHE_TIME
+        ):
             return cached["data"]
 
     data = _request(
@@ -204,12 +297,20 @@ def get_team_form(team_id, limit=10):
         }
     )
 
-    result = data.get("data", [])
+    result = data.get(
+        "data",
+        []
+    )
 
-    if not isinstance(result, list):
+    if not isinstance(
+        result,
+        list
+    ):
         result = []
 
-    _team_cache[cache_key] = {
+    _team_cache[
+        cache_key
+    ] = {
         "time": time.time(),
         "data": result
     }
@@ -226,21 +327,34 @@ def get_team_stats(team_id):
     if not team_id:
         return None
 
-    cache_key = f"stats:{team_id}"
+    cache_key = (
+        f"stats:{team_id}"
+    )
 
-    cached = _team_cache.get(cache_key)
+    cached = _team_cache.get(
+        cache_key
+    )
 
     if cached:
-        if time.time() - cached["time"] < TEAM_CACHE_TIME:
+
+        if (
+            time.time()
+            - cached["time"]
+            < TEAM_CACHE_TIME
+        ):
             return cached["data"]
 
     data = _request(
         f"{BASE_URL}/teams/{team_id}/stats"
     )
 
-    result = data.get("data")
+    result = data.get(
+        "data"
+    )
 
-    _team_cache[cache_key] = {
+    _team_cache[
+        cache_key
+    ] = {
         "time": time.time(),
         "data": result
     }
@@ -249,13 +363,21 @@ def get_team_stats(team_id):
 
 
 # -------------------------------------------------
-# ПОЛУЧИТЬ ДАННЫЕ ДВУХ КОМАНД
+# ДАННЫЕ ДВУХ КОМАНД
 # -------------------------------------------------
 
-def get_teams_analysis(home_name, away_name):
+def get_teams_analysis(
+    home_name,
+    away_name
+):
 
-    home_team = find_team(home_name)
-    away_team = find_team(away_name)
+    home_team = find_team(
+        home_name
+    )
+
+    away_team = find_team(
+        away_name
+    )
 
     result = {
         "home": {
@@ -264,6 +386,7 @@ def get_teams_analysis(home_name, away_name):
             "form": [],
             "stats": None
         },
+
         "away": {
             "name": away_name,
             "team": away_team,
@@ -273,36 +396,50 @@ def get_teams_analysis(home_name, away_name):
     }
 
     # Хозяева
-    if home_team and home_team.get("id"):
+    if (
+        home_team
+        and home_team.get("id")
+    ):
 
         team_id = home_team["id"]
 
-        result["home"]["form"] = get_team_form(
-            team_id
+        result["home"]["form"] = (
+            get_team_form(
+                team_id
+            )
         )
 
-        result["home"]["stats"] = get_team_stats(
-            team_id
+        result["home"]["stats"] = (
+            get_team_stats(
+                team_id
+            )
         )
 
     # Гости
-    if away_team and away_team.get("id"):
+    if (
+        away_team
+        and away_team.get("id")
+    ):
 
         team_id = away_team["id"]
 
-        result["away"]["form"] = get_team_form(
-            team_id
+        result["away"]["form"] = (
+            get_team_form(
+                team_id
+            )
         )
 
-        result["away"]["stats"] = get_team_stats(
-            team_id
+        result["away"]["stats"] = (
+            get_team_stats(
+                team_id
+            )
         )
 
     return result
 
 
 # -------------------------------------------------
-# СТАРАЯ ФУНКЦИЯ ОСТАЕТСЯ
+# СТАРАЯ ФУНКЦИЯ
 # -------------------------------------------------
 
 def get_match_stats(match_id):
@@ -316,4 +453,6 @@ def get_match_stats(match_id):
         f"{BASE_URL}/stored/matches/{match_id}/stats"
     )
 
-    return data.get("data")
+    return data.get(
+        "data"
+)
