@@ -96,6 +96,188 @@ def collect_markets(odds_data):
     if not isinstance(odds_data, dict):
         return result
 
+    bookmakers = odds_data.get(
+        "bookmakers",
+        {}
+    )
+
+    if not isinstance(bookmakers, dict):
+        return result
+
+    for bookmaker_name, markets in bookmakers.items():
+
+        # Bet365 и Bet365 (no latency) считаем одним букмекером
+        bookmaker = normalize_bookmaker(
+            bookmaker_name
+        )
+
+        if not bookmaker:
+            continue
+
+        if not isinstance(markets, list):
+            continue
+
+        for market in markets:
+
+            if not isinstance(market, dict):
+                continue
+
+            market_name = str(
+                market.get("name", "")
+            ).strip()
+
+            market_lower = market_name.lower()
+
+            odds_list = market.get(
+                "odds",
+                []
+            )
+
+            if not isinstance(
+                odds_list,
+                list
+            ):
+                continue
+
+            # =====================================
+            # 1X2
+            # =====================================
+
+            if market_lower in (
+                "ml",
+                "1x2",
+                "moneyline",
+                "h2h",
+                "match winner",
+                "match_winner"
+            ):
+
+                for odd in odds_list:
+
+                    if not isinstance(
+                        odd,
+                        dict
+                    ):
+                        continue
+
+                    home = to_float(
+                        odd.get("home")
+                    )
+
+                    draw = to_float(
+                        odd.get("draw")
+                    )
+
+                    away = to_float(
+                        odd.get("away")
+                    )
+
+                    if home:
+                        result.append({
+                            "type": "1x2",
+                            "selection": "home",
+                            "market": "П1",
+                            "bookmaker": bookmaker,
+                            "odds": home
+                        })
+
+                    if draw:
+                        result.append({
+                            "type": "1x2",
+                            "selection": "draw",
+                            "market": "X",
+                            "bookmaker": bookmaker,
+                            "odds": draw
+                        })
+
+                    if away:
+                        result.append({
+                            "type": "1x2",
+                            "selection": "away",
+                            "market": "П2",
+                            "bookmaker": bookmaker,
+                            "odds": away
+                        )
+
+            # =====================================
+            # TOTALS
+            # Берём только основные линии
+            # =====================================
+
+            elif market_lower in (
+                "totals",
+                "total",
+                "goals over/under"
+            ):
+
+                for odd in odds_list:
+
+                    if not isinstance(
+                        odd,
+                        dict
+                    ):
+                        continue
+
+                    line = (
+                        odd.get("hdp")
+                        or odd.get("point")
+                        or odd.get("line")
+                    )
+
+                    if line is None:
+                        continue
+
+                    try:
+                        line_float = float(line)
+                    except Exception:
+                        continue
+
+                    # Только основные футбольные тоталы
+                    allowed_lines = (
+                        1.5,
+                        2.5,
+                        3.0,
+                        3.5
+                    )
+
+                    if line_float not in allowed_lines:
+                        continue
+
+                    over = to_float(
+                        odd.get("over")
+                    )
+
+                    under = to_float(
+                        odd.get("under")
+                    )
+
+                    if over:
+                        result.append({
+                            "type": "total",
+                            "selection": "over",
+                            "market": f"ТБ {line_float:g}",
+                            "bookmaker": bookmaker,
+                            "odds": over,
+                            "line": line_float
+                        })
+
+                    if under:
+                        result.append({
+                            "type": "total",
+                            "selection": "under",
+                            "market": f"ТМ {line_float:g}",
+                            "bookmaker": bookmaker,
+                            "odds": under,
+                            "line": line_float
+                        )
+
+    return result
+
+    result = []
+
+    if not isinstance(odds_data, dict):
+        return result
+
     bookmakers = odds_data.get("bookmakers", {})
 
     if not isinstance(bookmakers, dict):
