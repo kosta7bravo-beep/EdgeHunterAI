@@ -1,36 +1,13 @@
-from datetime import datetime, timezone
-
 from telegram_bot import send_message
 from odds_provider import get_odds_matches
 
-
-MIN_VALUE = 5
-MIN_ODDS = 1.50
-MAX_ODDS = 5.00
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
-def fair_odds(probability):
-
-    if probability <= 0:
-        return None
-
-    return 1 / probability
-
-
-def calculate_value(probability, odds):
-
-    return (
-        probability * odds - 1
-    ) * 100
-
-
-def parse_probability_from_odds(odds):
-
-    if not odds or odds <= 0:
-        return 0
-
-    return 1 / odds
-
+# =================================================
+# ФОРМАТ ДАТЫ
+# =================================================
 
 def format_date(value):
 
@@ -38,119 +15,173 @@ def format_date(value):
         return "—"
 
     try:
-
         dt = datetime.fromisoformat(
-            value.replace("Z", "+00:00")
+            str(value).replace("Z", "+00:00")
         )
 
         return dt.astimezone(
-            timezone.utc
+            ZoneInfo("Europe/Kyiv")
         ).strftime(
-            "%d.%m.%Y %H:%M UTC"
+            "%d.%m.%Y %H:%M"
         )
 
     except Exception:
-
         return str(value)
 
 
-def extract_h2h(bookmakers):
+# =================================================
+# НАЗВАНИЕ ЛИГИ
+# =================================================
 
-    results = []
+def get_league_name(value):
 
-    for bookmaker in bookmakers or []:
+    if isinstance(value, dict):
 
-        markets = bookmaker.get(
-            "markets",
-            []
+        return (
+            value.get("name")
+            or value.get("slug")
+            or "—"
+        )
+
+    return str(value or "—")
+
+
+# =================================================
+# КОЭФФИЦИЕНТЫ
+# =================================================
+
+def format_odds(odds_data):
+
+    if not isinstance(odds_data, dict):
+        return "Коэффициенты не найдены."
+
+    bookmakers = odds_data.get(
+        "bookmakers",
+        {}
+    )
+
+    if not isinstance(bookmakers, dict):
+        return "Коэффициенты не найдены."
+
+    lines = []
+
+    for bookmaker, markets in bookmakers.items():
+
+        if not isinstance(markets, list):
+            continue
+
+        lines.append(
+            f"\n🏦 <b>{bookmaker}</b>"
         )
 
         for market in markets:
 
-            if market.get("key") != "h2h":
+            if not isinstance(market, dict):
                 continue
 
-            outcomes = market.get(
-                "outcomes",
+            market_name = market.get(
+                "name",
+                "—"
+            )
+
+            odds = market.get(
+                "odds",
                 []
             )
 
-            for outcome in outcomes:
+            if not isinstance(odds, list):
+                continue
 
-                name = outcome.get("name")
-                price = outcome.get("price")
+            for odd in odds:
 
-                if not name or not price:
+                if not isinstance(odd, dict):
                     continue
 
-                results.append(
-                    {
-                        "name": name,
-                        "odds": float(price),
-                        "bookmaker": bookmaker.get(
-                            "title",
-                            "—"
-                        )
-                    }
-                )
-
-    return results
-
-
-def extract_totals(bookmakers):
-
-    results = []
-
-    for bookmaker in bookmakers or []:
-
-        markets = bookmaker.get(
-            "markets",
-            []
-        )
-
-        for market in markets:
-
-            if market.get("key") != "totals":
-                continue
-
-            outcomes = market.get(
-                "outcomes",
-                []
-            )
-
-            for outcome in outcomes:
-
-                name = outcome.get("name")
-                point = outcome.get("point")
-                price = outcome.get("price")
-
-                if (
-                    not name
-                    or point is None
-                    or not price
+                # П1 / X / П2
+                if market_name in (
+                    "ML",
+                    "1X2",
+                    "Moneyline"
                 ):
-                    continue
 
-                results.append(
-                    {
-                        "name": name,
-                        "point": float(point),
-                        "odds": float(price),
-                        "bookmaker": bookmaker.get(
-                            "title",
-                            "—"
+                    home = odd.get(
+                        "home"
+                    )
+
+                    draw = odd.get(
+                        "draw"
+                    )
+
+                    away = odd.get(
+                        "away"
+                    )
+
+                    if home is not None:
+                        lines.append(
+                            f"⚽ П1: <b>{home}</b>"
                         )
-                    }
-                )
 
-    return results
+                    if draw is not None:
+                        lines.append(
+                            f"🤝 X: <b>{draw}</b>"
+                        )
 
+                    if away is not None:
+                        lines.append(
+                            f"⚽ П2: <b>{away}</b>"
+                        )
+
+                # Тотал
+                elif market_name in (
+                    "Totals",
+                    "total",
+                    "totals"
+                ):
+
+                    hdp = odd.get(
+                        "hdp"
+                    )
+
+                    over = odd.get(
+                        "over"
+                    )
+
+                    under = odd.get(
+                        "under"
+                    )
+
+                    if hdp is not None:
+
+                        if over is not None:
+                            lines.append(
+                                f"🔥 ТБ {hdp}: "
+                                f"<b>{over}</b>"
+                            )
+
+                        if under is not None:
+                            lines.append(
+                                f"❄️ ТМ {hdp}: "
+                                f"<b>{under}</b>"
+                            )
+
+    if not lines:
+        return "Коэффициенты не найдены."
+
+    return "\n".join(lines)
+
+
+# =================================================
+# ПРОВЕРКА ФУТБОЛА
+# =================================================
 
 async def check_football():
 
     try:
 
-        matches = get_odds_matches()
+        # Получаем матчи вместе с коэффициентами
+        matches = get_odds_matches(
+            limit=20
+        )
 
         await send_message(
             "⚽ <b>EDGEHUNTER AI</b>\n\n"
@@ -158,103 +189,66 @@ async def check_football():
             f"<b>{len(matches)}</b>"
         )
 
-        # Берём только ближайшие 3 матча
-        matches = sorted(
-            matches,
-            key=lambda x: x.get(
-                "commence_time",
-                ""
-            )
-        )[:3]
+        # Пока выводим только первые 3
+        # чтобы не заспамить Telegram
+        for match in matches[:3]:
 
-        for match in matches:
+            if not isinstance(
+                match,
+                dict
+            ):
+                continue
 
-            home = match.get(
-                "home_team",
-                "—"
-            )
-
-            away = match.get(
-                "away_team",
-                "—"
+            # ВАЖНО:
+            # Odds-API.io отдаёт эти поля
+            # непосредственно в match
+            home = (
+                match.get("home")
+                or "—"
             )
 
-            kickoff = format_date(
-                match.get(
-                    "commence_time"
-                )
+            away = (
+                match.get("away")
+                or "—"
             )
 
-            bookmakers = match.get(
-                "bookmakers",
-                []
+            date = format_date(
+                match.get("date")
             )
 
-            h2h = extract_h2h(
-                bookmakers
+            league = get_league_name(
+                match.get("league")
             )
 
-            totals = extract_totals(
-                bookmakers
+            event_id = match.get(
+                "id"
+            )
+
+            odds_data = match.get(
+                "odds"
+            )
+
+            odds_text = format_odds(
+                odds_data
             )
 
             text = (
                 "🔎 <b>EDGEHUNTER AI</b>\n\n"
+
+                f"🏆 <b>{league}</b>\n"
+
                 f"⚽ <b>{home}</b> — "
                 f"<b>{away}</b>\n"
-                f"📅 {kickoff}\n\n"
-            )
 
-            if h2h:
+                f"📅 <b>{date}</b>\n"
 
-                text += (
-                    "🏆 <b>1X2</b>\n"
-                )
+                f"🆔 {event_id}\n\n"
 
-                for item in h2h[:6]:
+                f"💰 <b>КОЭФФИЦИЕНТЫ</b>\n"
+                f"{odds_text}\n\n"
 
-                    odds = item["odds"]
-
-                    if (
-                        MIN_ODDS
-                        <= odds
-                        <= MAX_ODDS
-                    ):
-
-                        text += (
-                            f"{item['name']}: "
-                            f"<b>{odds:.2f}</b>\n"
-                        )
-
-                text += "\n"
-
-            if totals:
-
-                text += (
-                    "🔥 <b>ТОТАЛЫ</b>\n"
-                )
-
-                for item in totals[:6]:
-
-                    odds = item["odds"]
-
-                    if (
-                        MIN_ODDS
-                        <= odds
-                        <= MAX_ODDS
-                    ):
-
-                        text += (
-                            f"{item['name']} "
-                            f"{item['point']:.1f}: "
-                            f"<b>{odds:.2f}</b>\n"
-                        )
-
-                text += "\n"
-
-            text += (
-                "🧠 <b>Пока тестируем получение "
-                "коэффициентов.</b>"
+                "🧠 Пока тестируем получение "
+                "коэффициентов."
             )
 
             await send_message(
@@ -264,7 +258,6 @@ async def check_football():
     except Exception as e:
 
         await send_message(
-            "❌ <b>ODDS API ERROR</b>\n\n"
-            f"<code>{str(e)[:1500]}</code>"
-    )
-      
+            "❌ <b>FOOTBALL ERROR</b>\n\n"
+            f"<code>{str(e)[:2000]}</code>"
+        )
