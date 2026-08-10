@@ -833,30 +833,15 @@ async def check_football():
                     signal
                 )
 
-        # =================================================
+        # =========================================
         # НЕТ VALUE
-        # =================================================
+        # =========================================
 
         if not all_signals:
 
-            diagnostic = ""
-
-            if matches:
-
-                first_match = matches[0]
-
-                if isinstance(
-                    first_match,
-                    dict
-                ):
-
-                    diagnostic = (
-                        diagnostic_markets(
-                            first_match.get(
-                                "odds"
-                            )
-                        )
-                    )
+            diagnostic = diagnostic_markets(
+                matches
+            )
 
             await send_message(
                 "🔎 <b>EDGEHUNTER AI</b>\n\n"
@@ -871,9 +856,9 @@ async def check_football():
 
             return
 
-        # =================================================
-        # TOP VALUE
-        # =================================================
+        # =========================================
+        # СОРТИРОВКА
+        # =========================================
 
         all_signals.sort(
             key=lambda x: x["value"],
@@ -883,6 +868,10 @@ async def check_football():
         top_signals = all_signals[
             :TOP_SIGNALS
         ]
+
+        # =========================================
+        # ИТОГ
+        # =========================================
 
         await send_message(
             "🔥 <b>EDGEHUNTER AI — "
@@ -894,6 +883,10 @@ async def check_football():
             f"🏆 TOP: "
             f"<b>{len(top_signals)}</b>"
         )
+
+        # =========================================
+        # TOP-3
+        # =========================================
 
         for signal in top_signals:
 
@@ -909,4 +902,5 @@ async def check_football():
         await send_message(
             "❌ <b>FOOTBALL ERROR</b>\n\n"
             f"<code>{str(e)[:2000]}</code>"
+        )
 )
