@@ -1028,6 +1028,6 @@ def format_value_signal(
     signal
 ):
 
-    home = (
-        match.get("home")
+    home = match.get("home") or "—"
+    away = match.get("away") or "—"
        
