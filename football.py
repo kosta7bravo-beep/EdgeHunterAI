@@ -854,6 +854,68 @@ def diagnostic_markets(matches):
         if not isinstance(odds_data, dict):
             continue
 
+        # Получаем уже ОТФИЛЬТРОВАННЫЕ рынки
+        markets = collect_markets(
+            odds_data
+        )
+
+        for item in markets:
+
+            if not isinstance(item, dict):
+                continue
+
+            bookmaker = item.get(
+                "bookmaker"
+            )
+
+            market = item.get(
+                "market"
+            )
+
+            if bookmaker:
+                bookmakers.add(
+                    str(bookmaker)
+                )
+
+            if market:
+                market_names.add(
+                    str(market)
+                )
+
+            total_markets += 1
+
+    if total_markets == 0:
+
+        return (
+            "❌ После фильтрации "
+            "подходящих рынков не найдено."
+        )
+
+    return (
+        f"🏦 <b>Букмекеры:</b>\n"
+        f"{', '.join(sorted(bookmakers))}\n\n"
+
+        f"🎯 <b>Рынки:</b>\n"
+        f"{', '.join(sorted(market_names))}\n\n"
+
+        f"📦 <b>Позиций коэффициентов:</b> "
+        f"{total_markets}"
+    )
+
+    total_markets = 0
+    bookmakers = set()
+    market_names = set()
+
+    for match in matches:
+
+        if not isinstance(match, dict):
+            continue
+
+        odds_data = match.get("odds")
+
+        if not isinstance(odds_data, dict):
+            continue
+
         bookie_data = odds_data.get(
             "bookmakers",
             {}
