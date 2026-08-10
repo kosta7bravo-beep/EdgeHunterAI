@@ -903,4 +903,4 @@ async def check_football():
             "❌ <b>FOOTBALL ERROR</b>\n\n"
             f"<code>{str(e)[:2000]}</code>"
         )
-)
+
