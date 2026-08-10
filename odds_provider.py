@@ -3,119 +3,119 @@ import requests
 from datetime import datetime, timezone
 
 
-# =========================================================
+# =================================================
 # THE ODDS API
-# =========================================================
+# =================================================
 
 BASE_URL = "https://api.the-odds-api.com/v4"
 
-ODDS_API_KEY = os.getenv(
+ODDS_API_KEY = os.environ.get(
     "ODDS_API_KEY",
     ""
-).strip().strip('"').strip("'")
+).strip()
 
 
-# =========================================================
+# =================================================
 # НАСТРОЙКИ
-# =========================================================
-
-BOOKMAKERS = "bet365,betway"
+# =================================================
 
 REGIONS = "eu"
-
 MARKETS = "h2h,totals"
-
 ODDS_FORMAT = "decimal"
-
 DATE_FORMAT = "iso"
 
-REQUEST_TIMEOUT = 30
 
+# =================================================
+# ДИАГНОСТИКА API KEY
+# =================================================
 
-# =========================================================
-# API KEY
-# =========================================================
-
-def _get_api_key():
-
-    key = (
-        os.getenv(
-            "ODDS_API_KEY",
-            ""
+print(
+    "ODDS KEY DEBUG:",
+    {
+        "exists": bool(ODDS_API_KEY),
+        "length": len(ODDS_API_KEY),
+        "prefix": ODDS_API_KEY[:8],
+        "suffix": (
+            ODDS_API_KEY[-4:]
+            if ODDS_API_KEY
+            else ""
         )
-        .strip()
-        .strip('"')
-        .strip("'")
-    )
+    }
+)
 
-    if not key:
+
+# =================================================
+# ПРОВЕРКА API KEY
+# =================================================
+
+def _check_key():
+
+    if not ODDS_API_KEY:
+
         raise Exception(
             "ODDS_API_KEY не найден в Environment"
         )
 
-    return key
 
-
-# =========================================================
-# GET REQUEST
-# =========================================================
+# =================================================
+# ОБЩИЙ REQUEST
+# =================================================
 
 def _request(
     endpoint,
     params=None
 ):
 
-    key = _get_api_key()
+    _check_key()
 
     request_params = dict(
         params or {}
     )
 
-    request_params["apiKey"] = key
+    request_params["apiKey"] = (
+        ODDS_API_KEY
+    )
 
     try:
 
         response = requests.get(
             f"{BASE_URL}{endpoint}",
             params=request_params,
-            timeout=REQUEST_TIMEOUT
+            timeout=30
         )
 
-    except requests.RequestException as e:
+    except Exception as e:
 
         raise Exception(
             "ODDS API REQUEST ERROR: "
-            + str(e)
+            + repr(e)
         )
 
     if response.status_code != 200:
 
-        # Не показываем API key в ошибке
-        text = response.text[:1000]
-
         raise Exception(
             f"ODDS API HTTP "
             f"{response.status_code}: "
-            f"{text}"
+            f"{response.text[:1000]}"
         )
 
     try:
 
         return response.json()
 
-    except ValueError:
+    except Exception as e:
 
         raise Exception(
             "ODDS API JSON ERROR: "
-            "сервер вернул не JSON"
+            + repr(e)
         )
 
 
-# =========================================================
-# ДОСТУПНЫЕ SPORTS
-# =========================================================
+# =================================================
+# ПРОВЕРКА ДОСТУПА К API
+# =================================================
 
-def get_sports():
+def test_odds_api():
 
     data = _request(
         "/sports"
@@ -127,18 +127,36 @@ def get_sports():
     ):
 
         raise Exception(
-            "ODDS API SPORTS: "
-            "неожиданный формат"
+            "ODDS API: /sports "
+            "вернул неожиданный формат"
         )
+
+    print(
+        "ODDS API TEST: OK"
+    )
+
+    print(
+        "ODDS API SPORTS COUNT:",
+        len(data)
+    )
 
     return data
 
 
-# =========================================================
-# ФУТБОЛЬНЫЕ SPORTS
-# =========================================================
+# =================================================
+# СПИСОК SPORTS
+# =================================================
 
-def get_football_sports():
+def get_sports():
+
+    return test_odds_api()
+
+
+# =================================================
+# ПОИСК ФУТБОЛЬНЫХ SPORT KEYS
+# =================================================
+
+def get_football_sport_keys():
 
     sports = get_sports()
 
@@ -173,102 +191,53 @@ def get_football_sports():
             )
         ).lower()
 
-        if (
-            key.startswith(
-                "soccer_"
+        description = str(
+            sport.get(
+                "description",
+                ""
             )
-            or group == "soccer"
-            or "soccer" in title
-            or "football" in title
+        ).lower()
+
+        text = (
+            group
+            + " "
+            + title
+            + " "
+            + description
+        )
+
+        if (
+            "soccer" in text
+            or "football" in text
         ):
 
-            football.append(
-                {
-                    "key": key,
-                    "title": sport.get(
-                        "title",
-                        key
-                    ),
-                    "group": sport.get(
-                        "group",
-                        ""
-                    ),
-                    "active": sport.get(
-                        "active",
-                        False
-                    )
-                }
-            )
+            if key:
+
+                football.append(
+                    {
+                        "key": key,
+                        "title": sport.get(
+                            "title",
+                            key
+                        ),
+                        "group": sport.get(
+                            "group",
+                            ""
+                        )
+                    }
+                )
+
+    print(
+        "ODDS FOOTBALL SPORTS:",
+        football
+    )
 
     return football
 
 
-# =========================================================
-# ПРИОРИТЕТНЫЕ ФУТБОЛЬНЫЕ ЛИГИ
-# =========================================================
-
-PRIORITY_KEYS = [
-
-    "soccer_epl",
-
-    "soccer_germany_bundesliga",
-
-    "soccer_italy_serie_a",
-
-    "soccer_spain_la_liga",
-
-    "soccer_france_ligue_one",
-
-    "soccer_uefa_champs_league",
-
-    "soccer_uefa_europa_league",
-
-    "soccer_uefa_europa_conference_league",
-
-    "soccer_netherlands_eredivisie",
-
-    "soccer_portugal_primeira_liga",
-
-    "soccer_belgium_first_div",
-
-    "soccer_turkey_super_league",
-
-    "soccer_greece_super_league",
-
-    "soccer_scotland_premiership",
-
-]
-
-
-# =========================================================
-# ВЫБОР SPORT KEYS
-# =========================================================
-
-def get_priority_football_keys():
-
-    available = (
-        get_football_sports()
-    )
-
-    available_keys = {
-        item["key"]
-        for item in available
-    }
-
-    result = []
-
-    for key in PRIORITY_KEYS:
-
-        if key in available_keys:
-
-            result.append(key)
-
-    return result
-
-
-# =========================================================
-# КОЭФФИЦИЕНТЫ ОДНОЙ ЛИГИ
-# =========================================================
+# =================================================
+# ПОЛУЧЕНИЕ КОЭФФИЦИЕНТОВ
+# =================================================
 
 def get_odds_for_sport(
     sport_key
@@ -277,8 +246,7 @@ def get_odds_for_sport(
     if not sport_key:
 
         raise Exception(
-            "ODDS API: "
-            "sport_key пустой"
+            "ODDS API: пустой sport_key"
         )
 
     data = _request(
@@ -287,8 +255,7 @@ def get_odds_for_sport(
             "regions": REGIONS,
             "markets": MARKETS,
             "oddsFormat": ODDS_FORMAT,
-            "dateFormat": DATE_FORMAT,
-            "bookmakers": BOOKMAKERS
+            "dateFormat": DATE_FORMAT
         }
     )
 
@@ -298,38 +265,139 @@ def get_odds_for_sport(
     ):
 
         raise Exception(
-            "ODDS API ODDS: "
-            "неожиданный формат"
+            f"ODDS API: /sports/"
+            f"{sport_key}/odds "
+            "вернул неожиданный формат"
         )
+
+    print(
+        "ODDS SPORT:",
+        sport_key,
+        "MATCHES:",
+        len(data)
+    )
 
     return data
 
 
-# =========================================================
-# ДАТА
-# =========================================================
+# =================================================
+# ПОЛУЧЕНИЕ ФУТБОЛЬНЫХ МАТЧЕЙ
+# =================================================
 
-def _parse_datetime(
+def get_odds_matches():
+
+    football_sports = (
+        get_football_sport_keys()
+    )
+
+    if not football_sports:
+
+        raise Exception(
+            "ODDS API: "
+            "футбольные sport_key "
+            "не найдены"
+        )
+
+    all_matches = []
+
+    for sport in football_sports:
+
+        sport_key = sport["key"]
+
+        try:
+
+            matches = get_odds_for_sport(
+                sport_key
+            )
+
+            for match in matches:
+
+                if not isinstance(
+                    match,
+                    dict
+                ):
+                    continue
+
+                match["_sport_key"] = (
+                    sport_key
+                )
+
+                match["_sport_title"] = (
+                    sport.get(
+                        "title",
+                        sport_key
+                    )
+                )
+
+                all_matches.append(
+                    match
+                )
+
+        except Exception as e:
+
+            print(
+                "ODDS SPORT ERROR:",
+                sport_key,
+                repr(e)
+            )
+
+    # Убираем дубликаты
+
+    unique = {}
+
+    for match in all_matches:
+
+        match_id = match.get(
+            "id"
+        )
+
+        if match_id:
+
+            unique[
+                match_id
+            ] = match
+
+    matches = list(
+        unique.values()
+    )
+
+    # Ближайшие матчи сначала
+
+    matches.sort(
+        key=lambda item:
+            item.get(
+                "commence_time",
+                ""
+            )
+    )
+
+    print(
+        "ODDS TOTAL UNIQUE MATCHES:",
+        len(matches)
+    )
+
+    return matches
+
+
+# =================================================
+# ДАТА МАТЧА
+# =================================================
+
+def format_match_date(
     value
 ):
 
     if not value:
 
-        return None
+        return "—"
 
     try:
 
-        text = str(
-            value
-        ).strip()
-
-        text = text.replace(
-            "Z",
-            "+00:00"
-        )
-
         dt = datetime.fromisoformat(
-            text
+            str(value).replace(
+                "Z",
+                "+00:00"
+            )
         )
 
         if dt.tzinfo is None:
@@ -340,462 +408,208 @@ def _parse_datetime(
 
         return dt.astimezone(
             timezone.utc
+        ).strftime(
+            "%d.%m.%Y %H:%M UTC"
         )
 
     except Exception:
 
-        return None
+        return str(value)
 
 
-# =========================================================
-# НАЗВАНИЕ КОМАНДЫ
-# =========================================================
+# =================================================
+# H2H / 1X2
+# =================================================
 
-def _team_name(
-    value
+def extract_h2h(
+    bookmakers
 ):
 
-    if isinstance(
-        value,
-        str
+    results = []
+
+    for bookmaker in (
+        bookmakers or []
     ):
-
-        return value
-
-    if isinstance(
-        value,
-        dict
-    ):
-
-        return (
-            value.get("name")
-            or value.get("title")
-            or value.get("short_name")
-            or ""
-        )
-
-    return str(
-        value or ""
-    )
-
-
-# =========================================================
-# НОРМАЛИЗАЦИЯ МАТЧА
-# =========================================================
-
-def normalize_match(
-    match
-):
-
-    if not isinstance(
-        match,
-        dict
-    ):
-
-        return None
-
-    home = _team_name(
-        match.get(
-            "home_team"
-        )
-    )
-
-    away = _team_name(
-        match.get(
-            "away_team"
-        )
-    )
-
-    if not home or not away:
-
-        return None
-
-    kickoff = _parse_datetime(
-        match.get(
-            "commence_time"
-        )
-    )
-
-    return {
-
-        "id": match.get(
-            "id"
-        ),
-
-        "sport_key": match.get(
-            "sport_key"
-        ),
-
-        "sport_title": match.get(
-            "sport_title"
-        ),
-
-        "home": home,
-
-        "away": away,
-
-        "kickoff_utc": (
-            kickoff.isoformat()
-            if kickoff
-            else ""
-        ),
-
-        "bookmakers":
-            match.get(
-                "bookmakers",
-                []
-            )
-    }
-
-
-# =========================================================
-# ВСЕ МАТЧИ С КОЭФФИЦИЕНТАМИ
-# =========================================================
-
-def get_odds_matches(
-    sport_keys=None
-):
-
-    if sport_keys is None:
-
-        sport_keys = (
-            get_priority_football_keys()
-        )
-
-    if not sport_keys:
-
-        raise Exception(
-            "ODDS API: "
-            "не найдено доступных "
-            "футбольных sport_key"
-        )
-
-    all_matches = []
-
-    errors = []
-
-    for sport_key in sport_keys:
-
-        try:
-
-            matches = (
-                get_odds_for_sport(
-                    sport_key
-                )
-            )
-
-            for match in matches:
-
-                normalized = (
-                    normalize_match(
-                        match
-                    )
-                )
-
-                if normalized:
-
-                    all_matches.append(
-                        normalized
-                    )
-
-        except Exception as e:
-
-            errors.append(
-                f"{sport_key}: {e}"
-            )
-
-    # Если API не дал ни одного матча
-    if not all_matches:
-
-        message = (
-            "ODDS API: "
-            "не получено ни одного матча."
-        )
-
-        if errors:
-
-            message += (
-                "\n\n"
-                + "\n".join(
-                    errors[:10]
-                )
-            )
-
-        raise Exception(
-            message
-        )
-
-    # Убираем дубликаты
-    unique = {}
-
-    for match in all_matches:
-
-        match_id = (
-            match.get(
-                "id"
-            )
-            or (
-                match.get(
-                    "home",
-                    ""
-                )
-                + "_"
-                + match.get(
-                    "away",
-                    ""
-                )
-                + "_"
-                + match.get(
-                    "kickoff_utc",
-                    ""
-                )
-            )
-        )
-
-        unique[
-            match_id
-        ] = match
-
-    result = list(
-        unique.values()
-    )
-
-    # Сначала ближайшие матчи
-    result.sort(
-        key=lambda item:
-        item.get(
-            "kickoff_utc",
-            "9999"
-        )
-    )
-
-    return result
-
-
-# =========================================================
-# ИЗВЛЕЧЕНИЕ КОЭФФИЦИЕНТОВ
-# =========================================================
-
-def extract_odds(
-    match
-):
-
-    result = {
-
-        "h2h": {},
-
-        "totals": {}
-    }
-
-    bookmakers = (
-        match.get(
-            "bookmakers"
-        )
-        or []
-    )
-
-    for bookmaker in bookmakers:
-
-        bookmaker_name = (
-            bookmaker.get(
-                "title"
-            )
-            or bookmaker.get(
-                "key"
-            )
-            or ""
-        )
-
-        markets = (
-            bookmaker.get(
-                "markets"
-            )
-            or []
-        )
-
-        for market in markets:
-
-            market_key = market.get(
-                "key"
-            )
-
-            outcomes = (
-                market.get(
-                    "outcomes"
-                )
-                or []
-            )
-
-            # -------------------------
-            # 1X2
-            # -------------------------
-
-            if market_key == "h2h":
-
-                for outcome in outcomes:
-
-                    name = outcome.get(
-                        "name"
-                    )
-
-                    price = outcome.get(
-                        "price"
-                    )
-
-                    if (
-                        name
-                        and price is not None
-                    ):
-
-                        result[
-                            "h2h"
-                        ].setdefault(
-                            name,
-                            []
-                        ).append(
-                            {
-                                "bookmaker":
-                                    bookmaker_name,
-                                "odds":
-                                    price
-                            }
-                        )
-
-            # -------------------------
-            # TOTALS
-            # -------------------------
-
-            elif market_key == "totals":
-
-                for outcome in outcomes:
-
-                    name = outcome.get(
-                        "name"
-                    )
-
-                    point = outcome.get(
-                        "point"
-                    )
-
-                    price = outcome.get(
-                        "price"
-                    )
-
-                    if (
-                        name
-                        and price is not None
-                    ):
-
-                        result[
-                            "totals"
-                        ].setdefault(
-                            name,
-                            []
-                        ).append(
-                            {
-                                "bookmaker":
-                                    bookmaker_name,
-
-                                "point":
-                                    point,
-
-                                "odds":
-                                    price
-                            }
-                        )
-
-    return result
-
-
-# =========================================================
-# УДОБНЫЙ ФОРМАТ ДЛЯ БОТА
-# =========================================================
-
-def format_match(
-    match
-):
-
-    odds = extract_odds(
-        match
-    )
-
-    return {
-
-        "id":
-            match.get(
-                "id"
-            ),
-
-        "league":
-            match.get(
-                "sport_title"
-            ),
-
-        "sport_key":
-            match.get(
-                "sport_key"
-            ),
-
-        "home":
-            match.get(
-                "home"
-            ),
-
-        "away":
-            match.get(
-                "away"
-            ),
-
-        "kickoff_utc":
-            match.get(
-                "kickoff_utc"
-            ),
-
-        "odds":
-            odds
-    }
-
-
-# =========================================================
-# ПРОВЕРКА ODDS API
-# =========================================================
-
-def check_odds_api():
-
-    sports = get_sports()
-
-    football = []
-
-    for sport in sports:
 
         if not isinstance(
-            sport,
+            bookmaker,
             dict
         ):
             continue
 
-        key = str(
-            sport.get(
-                "key",
-                ""
+        bookmaker_name = (
+            bookmaker.get(
+                "title",
+                "—"
             )
         )
 
-        if key.startswith(
-            "soccer_"
+        for market in (
+            bookmaker.get(
+                "markets",
+                []
+            )
         ):
 
-            football.append(
-                key
+            if not isinstance(
+                market,
+                dict
+            ):
+                continue
+
+            if market.get(
+                "key"
+            ) != "h2h":
+
+                continue
+
+            for outcome in (
+                market.get(
+                    "outcomes",
+                    []
+                )
+            ):
+
+                if not isinstance(
+                    outcome,
+                    dict
+                ):
+                    continue
+
+                name = outcome.get(
+                    "name"
+                )
+
+                price = outcome.get(
+                    "price"
+                )
+
+                if (
+                    name
+                    and price is not None
+                ):
+
+                    try:
+
+                        price = float(
+                            price
+                        )
+
+                    except Exception:
+
+                        continue
+
+                    results.append(
+                        {
+                            "name": name,
+                            "odds": price,
+                            "bookmaker":
+                                bookmaker_name
+                        }
+                    )
+
+    return results
+
+
+# =================================================
+# TOTALS
+# =================================================
+
+def extract_totals(
+    bookmakers
+):
+
+    results = []
+
+    for bookmaker in (
+        bookmakers or []
+    ):
+
+        if not isinstance(
+            bookmaker,
+            dict
+        ):
+            continue
+
+        bookmaker_name = (
+            bookmaker.get(
+                "title",
+                "—"
             )
+        )
 
-    return {
+        for market in (
+            bookmaker.get(
+                "markets",
+                []
+            )
+        ):
 
-        "status": "OK",
+            if not isinstance(
+                market,
+                dict
+            ):
+                continue
 
-        "sports_total":
-            len(sports),
+            if market.get(
+                "key"
+            ) != "totals":
 
-        "football_sports":
-            football
-}
+                continue
+
+            for outcome in (
+                market.get(
+                    "outcomes",
+                    []
+                )
+            ):
+
+                if not isinstance(
+                    outcome,
+                    dict
+                ):
+                    continue
+
+                name = outcome.get(
+                    "name"
+                )
+
+                point = outcome.get(
+                    "point"
+                )
+
+                price = outcome.get(
+                    "price"
+                )
+
+                if (
+                    name
+                    and point is not None
+                    and price is not None
+                ):
+
+                    try:
+
+                        point = float(
+                            point
+                        )
+
+                        price = float(
+                            price
+                        )
+
+                    except Exception:
+
+                        continue
+
+                    results.append(
+                        {
+                            "name": name,
+                            "point": point,
+                            "odds": price,
+                            "bookmaker":
+                                bookmaker_name
+                        }
+                    )
+
+    return results
