@@ -656,9 +656,88 @@ def format_signal(
 # ДИАГНОСТИКА
 # =================================================
 
-def diagnostic_markets(
-    odds_data
-):
+def diagnostic_markets(matches):
+
+    total_markets = 0
+    bookmakers = set()
+    market_names = set()
+
+    for match in matches:
+
+        if not isinstance(match, dict):
+            continue
+
+        odds_data = match.get("odds")
+
+        if not isinstance(odds_data, dict):
+            continue
+
+        bookie_data = odds_data.get(
+            "bookmakers",
+            {}
+        )
+
+        if not isinstance(bookie_data, dict):
+            continue
+
+        for bookmaker, markets in bookie_data.items():
+
+            bookmakers.add(
+                str(bookmaker)
+            )
+
+            if not isinstance(
+                markets,
+                list
+            ):
+                continue
+
+            for market in markets:
+
+                if not isinstance(
+                    market,
+                    dict
+                ):
+                    continue
+
+                name = market.get(
+                    "name"
+                )
+
+                if name:
+                    market_names.add(
+                        str(name)
+                    )
+
+                odds = market.get(
+                    "odds"
+                )
+
+                if isinstance(
+                    odds,
+                    list
+                ):
+                    total_markets += len(
+                        odds
+                    )
+
+    if total_markets == 0:
+
+        return (
+            "❌ Не удалось разобрать "
+            "рынки ни в одном матче."
+        )
+
+    return (
+        f"🏦 Букмекеры:\n"
+        f"{', '.join(sorted(bookmakers))}\n\n"
+
+        f"🎯 Рынки:\n"
+        f"{', '.join(sorted(market_names))}\n\n"
+
+        f"📦 Позиций коэффициентов: "
+        f"<b>{total_markets}</b>"
+    )
 
     markets = collect_markets(
         odds_data
