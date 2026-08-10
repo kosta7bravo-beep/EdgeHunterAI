@@ -6,7 +6,22 @@ from zoneinfo import ZoneInfo
 
 
 # =================================================
-# ФОРМАТ ДАТЫ
+# НАСТРОЙКИ EDGEHUNTER
+# =================================================
+
+MATCH_LIMIT = 20
+TOP_SIGNALS = 3
+
+MIN_ODDS = 1.50
+MAX_ODDS = 5.00
+
+# Минимальная разница между букмекерами,
+# чтобы считать рынок интересным
+MIN_BOOKMAKER_DIFF = 0.05
+
+
+# =================================================
+# ДАТА
 # =================================================
 
 def format_date(value):
@@ -15,6 +30,7 @@ def format_date(value):
         return "—"
 
     try:
+
         dt = datetime.fromisoformat(
             str(value).replace("Z", "+00:00")
         )
@@ -26,11 +42,12 @@ def format_date(value):
         )
 
     except Exception:
+
         return str(value)
 
 
 # =================================================
-# НАЗВАНИЕ ЛИГИ
+# ЛИГА
 # =================================================
 
 def get_league_name(value):
@@ -47,151 +64,423 @@ def get_league_name(value):
 
 
 # =================================================
-# КОЭФФИЦИЕНТЫ
+# ЧИСЛО
 # =================================================
 
-def format_odds(odds_data):
+def to_float(value):
 
-    if not isinstance(odds_data, dict):
-        return "Коэффициенты не найдены."
+    try:
+        return float(value)
+
+    except Exception:
+        return None
+
+
+# =================================================
+# ИМПЛАЙД-ВЕРОЯТНОСТЬ
+# =================================================
+
+def implied_probability(odds):
+
+    odds = to_float(odds)
+
+    if not odds or odds <= 1:
+        return None
+
+    return 1 / odds
+
+
+# =================================================
+# СОБИРАЕМ РЫНКИ
+# =================================================
+
+def collect_markets(odds_data):
+
+    result = []
+
+    if not isinstance(
+        odds_data,
+        dict
+    ):
+        return result
 
     bookmakers = odds_data.get(
         "bookmakers",
         {}
     )
 
-    if not isinstance(bookmakers, dict):
-        return "Коэффициенты не найдены."
-
-    lines = []
+    if not isinstance(
+        bookmakers,
+        dict
+    ):
+        return result
 
     for bookmaker, markets in bookmakers.items():
 
-        if not isinstance(markets, list):
+        if not isinstance(
+            markets,
+            list
+        ):
             continue
-
-        lines.append(
-            f"\n🏦 <b>{bookmaker}</b>"
-        )
 
         for market in markets:
 
-            if not isinstance(market, dict):
+            if not isinstance(
+                market,
+                dict
+            ):
                 continue
 
-            market_name = market.get(
-                "name",
-                "—"
-            )
+            market_name = str(
+                market.get(
+                    "name",
+                    ""
+                )
+            ).lower()
 
-            odds = market.get(
+            odds_list = market.get(
                 "odds",
                 []
             )
 
-            if not isinstance(odds, list):
+            if not isinstance(
+                odds_list,
+                list
+            ):
                 continue
 
-            for odd in odds:
+            for odd in odds_list:
 
-                if not isinstance(odd, dict):
+                if not isinstance(
+                    odd,
+                    dict
+                ):
                     continue
 
-                # П1 / X / П2
+                # =================================
+                # 1X2
+                # =================================
+
                 if market_name in (
-                    "ML",
-                    "1X2",
-                    "Moneyline"
+                    "ml",
+                    "1x2",
+                    "moneyline"
                 ):
 
-                    home = odd.get(
-                        "home"
+                    home = to_float(
+                        odd.get("home")
                     )
 
-                    draw = odd.get(
-                        "draw"
+                    draw = to_float(
+                        odd.get("draw")
                     )
 
-                    away = odd.get(
-                        "away"
+                    away = to_float(
+                        odd.get("away")
                     )
 
-                    if home is not None:
-                        lines.append(
-                            f"⚽ П1: <b>{home}</b>"
-                        )
+                    if home:
+                        result.append({
+                            "market": "П1",
+                            "selection": "home",
+                            "bookmaker": bookmaker,
+                            "odds": home
+                        })
 
-                    if draw is not None:
-                        lines.append(
-                            f"🤝 X: <b>{draw}</b>"
-                        )
+                    if draw:
+                        result.append({
+                            "market": "X",
+                            "selection": "draw",
+                            "bookmaker": bookmaker,
+                            "odds": draw
+                        })
 
-                    if away is not None:
-                        lines.append(
-                            f"⚽ П2: <b>{away}</b>"
-                        )
+                    if away:
+                        result.append({
+                            "market": "П2",
+                            "selection": "away",
+                            "bookmaker": bookmaker,
+                            "odds": away
+                        })
 
-                # Тотал
+                # =================================
+                # TOTALS
+                # =================================
+
                 elif market_name in (
-                    "Totals",
-                    "total",
-                    "totals"
+                    "totals",
+                    "total"
                 ):
 
-                    hdp = odd.get(
+                    line = odd.get(
                         "hdp"
                     )
 
-                    over = odd.get(
-                        "over"
+                    over = to_float(
+                        odd.get("over")
                     )
 
-                    under = odd.get(
-                        "under"
+                    under = to_float(
+                        odd.get("under")
                     )
 
-                    if hdp is not None:
+                    if line is not None:
 
-                        if over is not None:
-                            lines.append(
-                                f"🔥 ТБ {hdp}: "
-                                f"<b>{over}</b>"
-                            )
+                        if over:
+                            result.append({
+                                "market":
+                                    f"ТБ {line}",
+                                "selection":
+                                    "over",
+                                "bookmaker":
+                                    bookmaker,
+                                "odds":
+                                    over
+                            })
 
-                        if under is not None:
-                            lines.append(
-                                f"❄️ ТМ {hdp}: "
-                                f"<b>{under}</b>"
-                            )
+                        if under:
+                            result.append({
+                                "market":
+                                    f"ТМ {line}",
+                                "selection":
+                                    "under",
+                                "bookmaker":
+                                    bookmaker,
+                                "odds":
+                                    under
+                            })
 
-    if not lines:
-        return "Коэффициенты не найдены."
-
-    return "\n".join(lines)
+    return result
 
 
 # =================================================
-# ПРОВЕРКА ФУТБОЛА
+# ПОИСК ЛУЧШЕЙ ЦЕНЫ
+# =================================================
+
+def find_market_signals(
+    odds_data
+):
+
+    markets = collect_markets(
+        odds_data
+    )
+
+    grouped = {}
+
+    for item in markets:
+
+        key = (
+            item["market"],
+            item["selection"]
+        )
+
+        if key not in grouped:
+            grouped[key] = []
+
+        grouped[key].append(
+            item
+        )
+
+    signals = []
+
+    for key, items in grouped.items():
+
+        if len(items) < 2:
+            continue
+
+        items = sorted(
+            items,
+            key=lambda x: x["odds"],
+            reverse=True
+        )
+
+        best = items[0]
+        second = items[1]
+
+        best_odds = best["odds"]
+        second_odds = second["odds"]
+
+        if not (
+            MIN_ODDS
+            <= best_odds
+            <= MAX_ODDS
+        ):
+            continue
+
+        difference = (
+            best_odds
+            - second_odds
+        )
+
+        if difference < MIN_BOOKMAKER_DIFF:
+            continue
+
+        probability = (
+            implied_probability(
+                best_odds
+            )
+        )
+
+        if probability is None:
+            continue
+
+        signals.append({
+            "market":
+                best["market"],
+
+            "selection":
+                best["selection"],
+
+            "best_bookmaker":
+                best["bookmaker"],
+
+            "best_odds":
+                best_odds,
+
+            "second_bookmaker":
+                second["bookmaker"],
+
+            "second_odds":
+                second_odds,
+
+            "difference":
+                difference,
+
+            "implied_probability":
+                probability
+        })
+
+    # Сначала лучшие по разнице
+    signals.sort(
+        key=lambda x: x["difference"],
+        reverse=True
+    )
+
+    return signals
+
+
+# =================================================
+# ФОРМАТ СИГНАЛА
+# =================================================
+
+def format_signal(
+    match,
+    signal
+):
+
+    home = (
+        match.get("home")
+        or "—"
+    )
+
+    away = (
+        match.get("away")
+        or "—"
+    )
+
+    league = get_league_name(
+        match.get("league")
+    )
+
+    date = format_date(
+        match.get("date")
+    )
+
+    market = signal[
+        "market"
+    ]
+
+    best_bookmaker = signal[
+        "best_bookmaker"
+    ]
+
+    best_odds = signal[
+        "best_odds"
+    ]
+
+    second_bookmaker = signal[
+        "second_bookmaker"
+    ]
+
+    second_odds = signal[
+        "second_odds"
+    ]
+
+    difference = signal[
+        "difference"
+    ]
+
+    probability = (
+        signal[
+            "implied_probability"
+        ]
+        * 100
+    )
+
+    return (
+        "🔥 <b>EDGEHUNTER AI — "
+        "MARKET SIGNAL</b>\n\n"
+
+        f"🏆 {league}\n"
+
+        f"⚽ <b>{home}</b> — "
+        f"<b>{away}</b>\n"
+
+        f"📅 {date}\n\n"
+
+        f"🎯 <b>Рынок:</b> "
+        f"{market}\n\n"
+
+        f"💰 <b>Лучший коэффициент:</b> "
+        f"{best_odds:.3f}\n"
+
+        f"🏦 {best_bookmaker}: "
+        f"<b>{best_odds:.3f}</b>\n"
+
+        f"🏦 {second_bookmaker}: "
+        f"{second_odds:.3f}\n\n"
+
+        f"📈 Разница букмекеров: "
+        f"<b>+{difference:.3f}</b>\n"
+
+        f"📊 Имплайд-вероятность: "
+        f"<b>{probability:.1f}%</b>\n\n"
+
+        "🧠 <b>Это пока рыночный сигнал, "
+        "а не прогноз результата.</b>"
+    )
+
+
+# =================================================
+# ОСНОВНАЯ ПРОВЕРКА
 # =================================================
 
 async def check_football():
 
     try:
 
-        # Получаем матчи вместе с коэффициентами
+        # =========================================
+        # ПОЛУЧАЕМ ВСЕ 20
+        # =========================================
+
         matches = get_odds_matches(
-            limit=20
+            limit=MATCH_LIMIT
         )
 
         await send_message(
             "⚽ <b>EDGEHUNTER AI</b>\n\n"
-            f"Получено матчей с коэффициентами: "
-            f"<b>{len(matches)}</b>"
+            f"📥 Получено матчей: "
+            f"<b>{len(matches)}</b>\n"
+            f"🔎 Анализирую все матчи..."
         )
 
-        # Пока выводим только первые 3
-        # чтобы не заспамить Telegram
-        for match in matches[:3]:
+        all_signals = []
+
+        # =========================================
+        # АНАЛИЗ ВСЕХ 20
+        # =========================================
+
+        for match in matches:
 
             if not isinstance(
                 match,
@@ -199,60 +488,74 @@ async def check_football():
             ):
                 continue
 
-            # ВАЖНО:
-            # Odds-API.io отдаёт эти поля
-            # непосредственно в match
-            home = (
-                match.get("home")
-                or "—"
-            )
-
-            away = (
-                match.get("away")
-                or "—"
-            )
-
-            date = format_date(
-                match.get("date")
-            )
-
-            league = get_league_name(
-                match.get("league")
-            )
-
-            event_id = match.get(
-                "id"
-            )
-
             odds_data = match.get(
                 "odds"
             )
 
-            odds_text = format_odds(
+            signals = find_market_signals(
                 odds_data
             )
 
-            text = (
-                "🔎 <b>EDGEHUNTER AI</b>\n\n"
+            for signal in signals:
 
-                f"🏆 <b>{league}</b>\n"
+                signal["match"] = match
 
-                f"⚽ <b>{home}</b> — "
-                f"<b>{away}</b>\n"
+                all_signals.append(
+                    signal
+                )
 
-                f"📅 <b>{date}</b>\n"
+        # =========================================
+        # НЕТ СИГНАЛОВ
+        # =========================================
 
-                f"🆔 {event_id}\n\n"
-
-                f"💰 <b>КОЭФФИЦИЕНТЫ</b>\n"
-                f"{odds_text}\n\n"
-
-                "🧠 Пока тестируем получение "
-                "коэффициентов."
-            )
+        if not all_signals:
 
             await send_message(
-                text
+                "🔎 <b>EDGEHUNTER AI</b>\n\n"
+                f"Проанализировано матчей: "
+                f"<b>{len(matches)}</b>\n\n"
+                "❌ Подходящих рыночных "
+                "сигналов пока нет."
+            )
+
+            return
+
+        # =========================================
+        # СОРТИРОВКА
+        # =========================================
+
+        all_signals.sort(
+            key=lambda x:
+                x["difference"],
+            reverse=True
+        )
+
+        top_signals = (
+            all_signals[
+                :TOP_SIGNALS
+            ]
+        )
+
+        # =========================================
+        # ОТПРАВЛЯЕМ TOP
+        # =========================================
+
+        await send_message(
+            "🔥 <b>EDGEHUNTER AI</b>\n\n"
+            f"Проанализировано матчей: "
+            f"<b>{len(matches)}</b>\n"
+            f"Найдено сигналов: "
+            f"<b>{len(all_signals)}</b>\n"
+            f"TOP: <b>{len(top_signals)}</b>"
+        )
+
+        for signal in top_signals:
+
+            await send_message(
+                format_signal(
+                    signal["match"],
+                    signal
+                )
             )
 
     except Exception as e:
