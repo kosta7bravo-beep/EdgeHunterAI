@@ -957,5 +957,70 @@ async def check_football():
                 matches
             )
 
+            await send_message(                "🔎 <b>EDGEHUNTER AI</b>\n\n"
+
+                f"📊 Проанализировано матчей: "
+                f"<b>{len(matches)}</b>\n\n"
+
+                "❌ Value-сигналов выше "
+                f"{MIN_VALUE * 100:.0f}% "
+                "не найдено.\n\n"
+
+                "🔧 <b>ДИАГНОСТИКА</b>\n\n"
+
+                f"{diagnostic}"
+            )
+
+            return
+
+        # =========================================
+        # СОРТИРОВКА
+        # =========================================
+
+        all_signals.sort(
+            key=lambda x: x["value"],
+            reverse=True
+        )
+
+        top_signals = all_signals[
+            :TOP_SIGNALS
+        ]
+
+        # =========================================
+        # ИТОГ
+        # =========================================
+
+        await send_message(
+            "🔥 <b>EDGEHUNTER AI — "
+            "VALUE SCAN</b>\n\n"
+
+            f"📊 Матчей: "
+            f"<b>{len(matches)}</b>\n"
+
+            f"🎯 Value-сигналов: "
+            f"<b>{len(all_signals)}</b>\n"
+
+            f"🏆 TOP: "
+            f"<b>{len(top_signals)}</b>"
+        )
+
+        # =========================================
+        # TOP-СИГНАЛЫ
+        # =========================================
+
+        for signal in top_signals:
+
             await send_message(
+                format_signal(
+                    signal["match"],
+                    signal
+                )
+            )
+
+    except Exception as e:
+
+        await send_message(
+            "❌ <b>FOOTBALL ERROR</b>\n\n"
+            f"<code>{str(e)[:2000]}</code>"
+        )
             
