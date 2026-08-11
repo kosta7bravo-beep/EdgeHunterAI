@@ -577,18 +577,19 @@ def get_signal_level(value):
 
 def find_value_signals(odds_data):
 
-    markets = collect_markets(
-        odds_data
-    )
+    markets = collect_markets(odds_data)
 
     if not markets:
         return []
 
-    grouped = group_markets(
-        markets
-    )
+    grouped = group_markets(markets)
 
     signals = []
+
+    debug_one_bookmaker = 0
+    debug_no_fair = 0
+    debug_low_value = 0
+    debug_good_value = 0
 
     for key, items in grouped.items():
 
@@ -596,16 +597,11 @@ def find_value_signals(odds_data):
         selection = key[1]
         line = key[2]
 
-        # ---------------------------------------------
-        # Лучшие цены каждого букмекера
-        # ---------------------------------------------
+        bookmakers = get_best_prices(items)
 
-        bookmakers = get_best_prices(
-            items
-        )
-
-        # Нужны минимум 2 разных букмекера
+        # Нужно минимум 2 букмекера
         if len(bookmakers) < 2:
+            debug_one_bookmaker += 1
             continue
 
         prices = sorted(
@@ -619,21 +615,13 @@ def find_value_signals(odds_data):
 
         best_odds = best["odds"]
 
-        # ---------------------------------------------
         # Ограничение коэффициента
-        # ---------------------------------------------
-
         if not (
-            MIN_ODDS
-            <= best_odds
-            <= MAX_ODDS
+            MIN_ODDS <= best_odds <= MAX_ODDS
         ):
             continue
 
-        # ---------------------------------------------
-        # FAIR
-        # ---------------------------------------------
-
+        # FAIR PROBABILITY
         if market_type == "1x2":
 
             fair = fair_probability_1x2(
@@ -653,33 +641,29 @@ def find_value_signals(odds_data):
             continue
 
         if fair is None:
+            debug_no_fair += 1
             continue
 
-        # ---------------------------------------------
         # VALUE
-        # ---------------------------------------------
-
         value = (
-            fair
-            * best_odds
+            fair * best_odds
         ) - 1.0
 
         if value < MIN_VALUE:
+            debug_low_value += 1
             continue
 
-        level, description = (
-            get_signal_level(
-                value
-            )
+        debug_good_value += 1
+
+        level, description = get_signal_level(
+            value
         )
 
         signals.append({
 
-            "market":
-                best["market"],
+            "market": best["market"],
 
-            "selection":
-                selection,
+            "selection": selection,
 
             "best_bookmaker":
                 best["bookmaker"],
@@ -694,8 +678,7 @@ def find_value_signals(odds_data):
                 second["odds"],
 
             "difference":
-                best_odds
-                - second["odds"],
+                best_odds - second["odds"],
 
             "fair_probability":
                 fair,
